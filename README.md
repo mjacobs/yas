@@ -1,4 +1,6 @@
-# yas
+# yas shell history
+
+![YAS — an enthusiastic cat](docs/yas.jpg)
 
 **A queryable record of everything you run.** yas is a **local-first**
 _execution substrate_: it records every command you run into a fast local
