@@ -1,0 +1,32 @@
+# golangci-lint v2 config. Run: `make lint` (or `golangci-lint run`).
+version: "2"
+
+linters:
+  enable:
+    - gosec      # security checks — e.g. G112 (missing http.Server timeouts)
+    - misspell   # typos in comments and strings
+  settings:
+    gosec:
+      excludes:
+        # File paths come from the user's own config/CLI/data dir, not untrusted
+        # input — this is a local single-user tool.
+        - G304
+    errcheck:
+      # Conventional fire-and-forget cleanup on database/sql handles.
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Stmt).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+  exclusions:
+    rules:
+      # Test fixtures open files from computed temp paths and routinely ignore
+      # Close/Decode errors on throwaway handles.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

@@ -1,0 +1,10 @@
+[Unit]
+Description=yas client sync (push/pull with the central server)
+Documentation=https://github.com/mjacobs/yas
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Reads ~/.config/yas/config.json (server_url, token).
+ExecStart=%h/.local/bin/yas sync

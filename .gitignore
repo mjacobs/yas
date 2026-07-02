@@ -1,0 +1,23 @@
+# Build output (root-anchored so they don't shadow cmd/yas and cmd/yas-server)
+/bin/
+/dist/
+/yas
+/yas-server
+
+# Local data / config that shouldn't be committed
+*.db
+*.db-wal
+*.db-shm
+config.json
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.kata.local.toml
+# roborev snapshots
+/.roborev/
+
+# Agent-harness state (session settings, worktrees, task briefs) — never repo
+# content; ignored here so clones don't depend on anyone's global ~/.gitignore.
+/.claude/
+/.superpowers/

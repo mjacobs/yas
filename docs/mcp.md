@@ -1,0 +1,66 @@
+# yas mcp — command history for AI agents
+
+`yas mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+server exposing **read-only** tools over your shell-command history. It is the
+agent seam: the same records your Ctrl-R recall hits, queryable by a coding
+agent. It reads the local replica through the same query contract the HTTP API
+uses (`store.Query`/record), never the database schema, and needs no separate
+`yas serve` running.
+
+## Tools (all read-only)
+
+| Tool | What it answers |
+| --- | --- |
+| `search_commands` | Full-text search with filters (host, cwd, session, exit, `executor`, failed-only, RFC3339 `since`/`until`), newest-first. "Have I run this before?", "how did I do X here?" |
+| `recent_commands` | The most recent commands, optionally scoped by host/cwd/executor. |
+| `what_failed` | Recent commands that exited non-zero, optionally by host/cwd/since. |
+| `command_status` | One command by `id`: its exit code, duration, cwd, host, executor. |
+
+`executor` accepts a name (`human`, `claude-code`, `codex`, `ci`, …) or the
+convenience tokens `$all-agent` / `$all-human` — the same vocabulary as the
+query API and `yas search --executor`.
+
+## Add it to an MCP client
+
+**Claude Code:**
+
+```bash
+claude mcp add yas -- yas mcp
+```
+
+**Generic MCP client config** (Claude Desktop, etc.):
+
+```json
+{
+  "mcpServers": {
+    "yas": { "command": "yas", "args": ["mcp"] }
+  }
+}
+```
+
+The client launches `yas mcp` and speaks MCP over **stdio** (the default).
+
+## StreamableHTTP (optional)
+
+To serve over HTTP instead of stdio:
+
+```bash
+yas mcp --http 127.0.0.1:8770        # loopback (no listener auth)
+```
+
+Bare ports (`8770`, `:8770`) bind loopback. A **non-loopback** bind is a
+network-reachable read surface over your whole history, so it is refused unless
+you pass `--http-allow-insecure` **and** have a token configured (`token` /
+`YAS_TOKEN`); the server then enforces `Authorization: Bearer <token>` on every
+request. The loopback handler also keeps the SDK's DNS-rebinding protection.
+
+## Notes
+
+- The server is **pull-only**: an agent calls a tool; yas answers. Auto-injected
+  "context before the first prompt" resources are a deliberate non-feature for
+  now (a privacy/noise surface) — the seam is left open for later, off by
+  default.
+- yas does not (yet) record the querying agent's *own* commands, so the
+  "exclude my own in-flight activity" self-reference guard is a no-op today; the
+  reserved `corr_id` field is where it will hook in once agent-command capture
+  lands.

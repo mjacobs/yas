@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic yas sync (push/pull every few minutes)
+Documentation=https://github.com/mjacobs/yas
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

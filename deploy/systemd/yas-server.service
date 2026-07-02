@@ -1,0 +1,25 @@
+[Unit]
+Description=yas sync server (Postgres-backed shell-history hub)
+Documentation=https://github.com/mjacobs/yas
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Config: addr, database_url, token. Password may live in ~/.pgpass instead.
+Environment=YAS_CONFIG=%h/.config/yas/server.json
+ExecStart=%h/.local/bin/yas-server
+# yas-server bounds its startup Postgres connect at 10s and exits non-zero
+# when the DB is wedged/unreachable, so this Restart/RestartSec pair — not
+# TimeoutStartSec (Type=simple never gates start on readiness) — is what
+# drives the retry loop until Postgres comes back.
+Restart=on-failure
+RestartSec=5
+# Hardening (the service only needs network + its config/.pgpass).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
