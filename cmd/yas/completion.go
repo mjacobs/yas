@@ -91,6 +91,7 @@ _yas() {
     search)
       _arguments \
         '--host[filter by host]:host:' \
+        '--cwd[filter by working directory]:directory:_files -/' \
         '--session[filter by session id]:session:' \
         '--exit[filter by exit code]:code:' \
         '--failed[only non-zero exits]' \
@@ -136,7 +137,9 @@ _yas() {
         '--file[history source path]:file:_files'
       ;;
     mcp)
-      _arguments '--http[serve MCP over HTTP at this address]:address:'
+      _arguments \
+        '--http[serve MCP over HTTP at this address]:address:' \
+        '--http-allow-insecure[allow --http to bind a non-loopback address]'
       ;;
     completion)
       if (( CURRENT == 3 )); then

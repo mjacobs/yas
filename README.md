@@ -283,9 +283,9 @@ any later live write). No CRDT needed.
 sync to a central Postgres, the `/v1` query API, MCP access for agents,
 zsh-history/atuin import, and static cross-compiled release builds.
 
-**Next:** agent-aware records (an `executor` field + a frozen, versioned
-`/v1` contract), then `yas-mcp` (the agent seam) and cross-machine
-`Ctrl-R` (the human seam) over the same store. See the
+**Next:** cross-tool correlation — populating the reserved `corr_id` field so
+a recorded command can join to the agent session that ran it — and curating
+the MCP recall verbs based on dogfooding. See the
 [vision & direction spec](docs/superpowers/specs/2026-06-25-yas-vision-and-direction-design.md).
 
 Stretch: bash + fish hooks; optional global query API on the server for a

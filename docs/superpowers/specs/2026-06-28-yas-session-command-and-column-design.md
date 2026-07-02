@@ -145,10 +145,10 @@ Sessions(ctx context.Context) ([]string, error)
 ## Caveats & follow-ups
 
 - **Live-only:** only live-hook-captured commands have a session. Imported rows
-  (`session=""`) show a blank token and can't be grouped — same import/live split
-  tracked by h4t6/qzs4. Documented, not fixed here.
+  (`session=""`) show a blank token and can't be grouped — the same import/live
+  split noted elsewhere. Documented, not fixed here.
 - **Collisions:** 7-char base36 makes them very unlikely; resolution handles them
   rather than the token format.
 - **MCP:** no change in v1 (the full `session` is already exposed); a
-  session-grouping MCP verb is a candidate later recall verb (tcnp).
+  session-grouping MCP verb is a candidate later recall verb.
 - **Postgres `Sessions`:** add when/if a global server-side query API lands.

@@ -28,8 +28,14 @@ func TestDoCompletion_ZshOffersEveryCommand(t *testing.T) {
 			t.Errorf("script does not offer subcommand %q", sub)
 		}
 	}
-	// Spot-check flag and value sources survive in the script.
-	for _, want := range []string{"--from", "zsh-history", "atuin", "--json", "--failed"} {
+	// Spot-check flag and value sources survive in the script. The bracketed
+	// descriptions pin flags to their subcommand block (a bare "--cwd" would
+	// also match record start's).
+	for _, want := range []string{
+		"--from", "zsh-history", "atuin", "--json", "--failed",
+		"--cwd[filter by working directory]",
+		"--http-allow-insecure[",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("script missing %q", want)
 		}

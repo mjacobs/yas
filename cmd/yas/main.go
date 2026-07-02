@@ -1323,7 +1323,7 @@ usage:
   yas [n]                               default command: shortcut for `+"`yas history [n]`"+`
   yas record start  --command <c> [--cwd <d>] [--session <s>] [--shell <sh>] [--author <who>]
   yas record finish --id <id> --exit <n> [--duration-ms <ms>]
-  yas search [text...] [--host h] [--session s] [--exit n] [--failed] [--executor e]
+  yas search [text...] [--host h] [--cwd d] [--session s] [--exit n] [--failed] [--executor e]
               [--since t] [--until t] [--limit n] [--offset n] [--reverse] [--json] [--no-color] [--no-session]
   yas history [n]                       list the last n entries (default 100),
               [--time-format <layout>] [--no-time] [--no-exit] [--no-session] [--no-color] [--json]   numbered, oldest first
@@ -1333,7 +1333,7 @@ usage:
   yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API
   yas sync                              push/pull with the central server
   yas import [--from zsh-history|atuin] [--file <path>]   backfill from shell history or atuin
-  yas mcp    [--http <addr>]            MCP server (read-only tools) over stdio/HTTP
+  yas mcp    [--http <addr>] [--http-allow-insecure]   MCP server (read-only tools) over stdio/HTTP
   yas completion zsh                    print the zsh completion script (zsh only for now)
   yas version
 `)
