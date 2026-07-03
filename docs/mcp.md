@@ -15,6 +15,15 @@ uses (`store.Query`/record), never the database schema, and needs no separate
 | `recent_commands` | The most recent commands, optionally scoped by host/cwd/executor. |
 | `what_failed` | Recent commands that exited non-zero, optionally by host/cwd/since. |
 | `command_status` | One command by `id`: its exit code, duration, cwd, host, executor. |
+| `failure_summary` | **Rollup:** top recurring failing commands with counts + last-seen, scoped by host/cwd/`since`. "What keeps breaking?" — the aggregate to `what_failed`'s list. |
+| `how_did_i_run` | **Recall:** distinct argument patterns for a given program (`git`, `ssh`, …), newest-first, near-duplicates that differ only inside quotes collapsed. "What flags/args did I use with X?" |
+
+`failure_summary` and `how_did_i_run` fold results in the agent over a recent
+scan window (exact within it); a top-level `scan_truncated` flag signals older
+matches may exist beyond the window (distinct from a per-item `truncated`, which
+flags a single command string that was shortened). `how_did_i_run` scopes its
+full-text match to the command column, so a directory path containing the
+program name never crowds real invocations out of the window.
 
 `executor` accepts a name (`human`, `claude-code`, `codex`, `ci`, …) or the
 convenience tokens `$all-agent` / `$all-human` — the same vocabulary as the

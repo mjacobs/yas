@@ -169,6 +169,10 @@ if command -v zsh >/dev/null; then
     # Source the real hook in a clean zsh and drive preexec/precmd by hand around
     # a few commands, toggling pause in the middle. Same data dir + binary.
     hook="$WORK/hook_test.zsh"
+    hook_session_file="$WORK/hook_session"
+    # Echo the hook's own generated session id out so the assertions below can
+    # scope to it explicitly, rather than relying on the store being otherwise
+    # empty (from the `history -c --yes` above) to isolate these records.
     cat >"$hook" <<EOF
 source "$ROOT/shell/yas.zsh"
 _yas_preexec "smoke-tracked-one"; _yas_precmd
@@ -176,9 +180,11 @@ yas-pause
 _yas_preexec "smoke-secret-paused"; _yas_precmd
 yas-resume
 _yas_preexec "smoke-tracked-two"; _yas_precmd
+echo "\$YAS_SESSION" >"$hook_session_file"
 EOF
     PATH="$WORK:$PATH" zsh -f "$hook" >/dev/null 2>&1
-    captured="$("$BIN" search --json | jq -r '.records[].command')"
+    hook_session="$(<"$hook_session_file")"
+    captured="$("$BIN" search --json --session "$hook_session" | jq -r '.records[].command')"
     case "$captured" in
         *smoke-secret-paused*)
             echo "  FAIL: a yas-pause'd command was captured" >&2
@@ -190,7 +196,7 @@ EOF
         echo "  FAIL: tracked commands were not captured" >&2
         printf '%s\n' "$captured" >&2; exit 1
     fi
-    tracked_exec="$("$BIN" search --json | jq -r '.records[] | select(.command=="smoke-tracked-one") | .executor')"
+    tracked_exec="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-tracked-one") | .executor')"
     assert_eq "hook tags human executor" "$tracked_exec" "human"
 else
     echo "### zsh hook + pause (skipped: zsh not found)"
@@ -199,16 +205,44 @@ fi
 echo "### executor provenance + contract version"
 aid="$("$BIN" record start --command "agent-deploy" --cwd "$ROOT" --session smoke --shell zsh --author claude-code)"
 "$BIN" record finish --id "$aid" --exit 0 --duration-ms 1
-agent_hit="$(curl -fsS "http://$ADDR/v1/search?executor=\$all-agent" | jq -r '.records[].command')"
+# Scoped to the smoke session so this doesn't silently depend on the store
+# being otherwise empty (from the earlier `history -c --yes`) to isolate it.
+agent_hit="$(curl -fsS "http://$ADDR/v1/search?executor=\$all-agent&session=smoke" | jq -r '.records[].command')"
 assert_eq "executor=\$all-agent finds the agent command" "$agent_hit" "agent-deploy"
 ver="$(curl -fsS "http://$ADDR/v1/version" | jq -r .version)"
 assert_eq "/v1/version reports v1" "$ver" "v1"
 
+echo "### record repeated failures (failure_summary rollup)"
+# The store was cleared above, so seed a recurring failure for the MCP rollup.
+for _ in 1 2; do
+    frid="$("$BIN" record start --command "flaky-cmd --once" --cwd "$ROOT" --session smoke --shell zsh)"
+    "$BIN" record finish --id "$frid" --exit 1 --duration-ms 1
+done
+
+###############################################################################
+# yas digest: deterministic per-(host,cwd) synthesis over the local replica.
+# --json is the contract; groups is always an array, seq never surfaces, and an
+# empty window still serializes groups as [] (the empty-list invariant).
+###############################################################################
+echo "### yas digest"
+digest_json="$("$BIN" digest --json)"
+assert_eq "digest --json groups is an array" \
+    "$(jq -r '.groups | type' <<<"$digest_json")" "array"
+if jq -e '.. | objects | has("seq")' <<<"$digest_json" >/dev/null 2>&1; then
+    echo "  FAIL: digest --json leaked seq -> $digest_json" >&2; exit 1
+fi
+echo "  ok: digest --json never emits seq"
+empty_digest="$("$BIN" digest --since 2000-01-01T00:00:00Z --until 2000-01-02T00:00:00Z --json)"
+case "$empty_digest" in
+    *'"groups": []'*) echo "  ok: empty digest window serializes groups as []" ;;
+    *) echo "  FAIL: empty digest not [] -> $empty_digest" >&2; exit 1 ;;
+esac
+
 ###############################################################################
 # yas mcp (agent seam): JSON-RPC round-trip over the real stdio transport —
-# initialize, list the tools, call search_commands with an executor token.
-# stdin stays open briefly after each batch so the server can flush replies
-# before EOF tears the transport down.
+# initialize, list the tools, call search_commands with an executor token, and
+# call failure_summary (the rollup verb). stdin stays open briefly after each
+# batch so the server can flush replies before EOF tears the transport down.
 ###############################################################################
 echo "### yas mcp e2e (stdio)"
 mcp_out="$({
@@ -217,15 +251,21 @@ mcp_out="$({
     printf '%s\n' \
         '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
         '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-        '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_commands","arguments":{"query":"agent-deploy","executor":"$all-agent"}}}'
+        '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_commands","arguments":{"query":"agent-deploy","executor":"$all-agent","session":"smoke"}}}' \
+        '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"failure_summary","arguments":{}}}'
     sleep 1
 } | "$BIN" mcp 2>/dev/null)"
 
 mcp_tools="$(jq -rs '[.[] | select(.id==2) | .result.tools[].name] | sort | join(",")' <<<"$mcp_out")"
-assert_eq "mcp tools/list exposes the four read tools" \
-    "$mcp_tools" "command_status,recent_commands,search_commands,what_failed"
+assert_eq "mcp tools/list exposes the six read tools" \
+    "$mcp_tools" "command_status,failure_summary,how_did_i_run,recent_commands,search_commands,what_failed"
 mcp_hit="$(jq -rs '[.[] | select(.id==3) | .result.structuredContent.commands[].command] | join(",")' <<<"$mcp_out")"
 assert_eq "mcp search_commands honors \$all-agent" "$mcp_hit" "agent-deploy"
+# failure_summary rolls the two flaky-cmd failures into one group with count 2.
+mcp_fail_cmd="$(jq -rs '[.[] | select(.id==4) | .result.structuredContent.failures[0].command] | join(",")' <<<"$mcp_out")"
+assert_eq "mcp failure_summary rolls up the recurring failure" "$mcp_fail_cmd" "flaky-cmd --once"
+mcp_fail_count="$(jq -rs '[.[] | select(.id==4) | .result.structuredContent.failures[0].count] | join(",")' <<<"$mcp_out")"
+assert_eq "mcp failure_summary counts repeats" "$mcp_fail_count" "2"
 
 ###############################################################################
 # Ctrl-R recall source (shell/yas-fzf.zsh): dedup + human-only default scope.

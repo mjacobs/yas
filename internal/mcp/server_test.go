@@ -48,13 +48,16 @@ func TestNewServer_RegistersReadOnlyTools(t *testing.T) {
 			t.Errorf("tool %s not annotated read-only", tl.Name)
 		}
 	}
-	for _, want := range []string{ToolSearchCommands, ToolRecentCommands, ToolWhatFailed, ToolCommandStatus} {
+	for _, want := range []string{
+		ToolSearchCommands, ToolRecentCommands, ToolWhatFailed, ToolCommandStatus,
+		ToolFailureSummary, ToolHowDidIRun,
+	} {
 		if !names[want] {
 			t.Errorf("missing tool %s", want)
 		}
 	}
-	if len(tools.Tools) != 4 {
-		t.Errorf("want 4 tools, got %d", len(tools.Tools))
+	if len(tools.Tools) != 6 {
+		t.Errorf("want 6 tools, got %d", len(tools.Tools))
 	}
 }
 

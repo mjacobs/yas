@@ -13,22 +13,27 @@ import (
 // Query expresses a history search. Zero-valued fields are ignored, so an empty
 // Query matches everything (most-recent-first by default).
 type Query struct {
-	ID         string    // exact record id (fetch a single record)
-	ExcludeID  string    // omit this record id (e.g. the in-flight query command itself)
-	Text       string    // full-text match against the command (and cwd)
-	Host       string    // exact hostname filter
-	CWD        string    // exact working-directory filter
-	Session    string    // exact shell-session filter
-	Since      time.Time // start_time >= Since
-	Until      time.Time // start_time <  Until
-	ExitCode   *int      // exact exit-code filter
-	FailedOnly bool      // only finished commands with a non-zero exit code
-	Executor   string    // exact executor match (who/what ran it)
-	AgentsOnly bool      // only agent-run commands (executor set and != "human")
-	HumansOnly bool      // only human-run commands (executor unset/empty/"human")
-	Limit      int       // 0 -> implementation default
-	Offset     int       // for pagination
-	Reverse    bool      // false: newest first; true: oldest first
+	ID        string // exact record id (fetch a single record)
+	ExcludeID string // omit this record id (e.g. the in-flight query command itself)
+	Text      string // full-text match against the command (and cwd)
+	// CommandTextOnly scopes a Text match to the command column, excluding cwd.
+	// how_did_i_run sets it so a program name doesn't match records merely
+	// because a directory in their path contains it (which would let cwd noise
+	// crowd genuine invocations out of the scan window). Ignored when Text is "".
+	CommandTextOnly bool
+	Host            string    // exact hostname filter
+	CWD             string    // exact working-directory filter
+	Session         string    // exact shell-session filter
+	Since           time.Time // start_time >= Since
+	Until           time.Time // start_time <  Until
+	ExitCode        *int      // exact exit-code filter
+	FailedOnly      bool      // only finished commands with a non-zero exit code
+	Executor        string    // exact executor match (who/what ran it)
+	AgentsOnly      bool      // only agent-run commands (executor set and != "human")
+	HumansOnly      bool      // only human-run commands (executor unset/empty/"human")
+	Limit           int       // 0 -> implementation default
+	Offset          int       // for pagination
+	Reverse         bool      // false: newest first; true: oldest first
 
 	// IncludeDeleted also returns tombstoned rows. Internal-only: the importer
 	// needs to SEE deletions to honor them (never resurrect, never re-dirty a

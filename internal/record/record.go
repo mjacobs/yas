@@ -45,14 +45,19 @@ const ExecutorHuman = "human"
 // a person (Executor set to something other than "human").
 func (r Record) IsAgent() bool { return r.Executor != "" && r.Executor != ExecutorHuman }
 
-// ContractFields is the frozen, ordered set of JSON keys a fully-populated Record
-// serializes to — the v1 query-API contract. Adding, removing, or renaming a key
-// is a breaking change: it must be a deliberate, versioned decision (bump
-// queryapi.ContractVersion and update docs/api/query-api-v1.md).
-var ContractFields = []string{
-	"id", "command", "cwd", "hostname", "session", "shell", "username",
-	"exit_code", "start_time", "duration_ms", "created_at", "deleted",
-	"executor", "corr_id",
+// ContractFields returns the frozen, ordered set of JSON keys a
+// fully-populated Record serializes to — the v1 query-API contract. Adding,
+// removing, or renaming a key is a breaking change: it must be a deliberate,
+// versioned decision (bump queryapi.ContractVersion and update
+// docs/api/query-api-v1.md). It returns a fresh slice on every call so a
+// caller mutating the result can't corrupt the frozen contract for anyone
+// else.
+func ContractFields() []string {
+	return []string{
+		"id", "command", "cwd", "hostname", "session", "shell", "username",
+		"exit_code", "start_time", "duration_ms", "created_at", "deleted",
+		"executor", "corr_id",
+	}
 }
 
 // MaxCommandBytes bounds Command so a hostile or buggy peer can't sync

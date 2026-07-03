@@ -250,7 +250,8 @@ session id (see the live-only caveat above).
 ## Agent access (MCP)
 
 `yas mcp` exposes your history to AI coding agents as **read-only** MCP tools
-(`search_commands`, `recent_commands`, `what_failed`, `command_status`) — the
+(`search_commands`, `recent_commands`, `what_failed`, `command_status`, plus the
+curated `failure_summary` rollup and `how_did_i_run` recall) — the
 same records your Ctrl-R recall hits, queried through the same contract. It's
 the agent seam to the human seam's fzf Ctrl-R. Add it with
 `claude mcp add yas -- yas mcp` (stdio), or serve StreamableHTTP with
@@ -280,12 +281,14 @@ any later live write). No CRDT needed.
 ## Status & roadmap
 
 **Working today:** live zsh capture, local FTS5 search, session views,
-sync to a central Postgres, the `/v1` query API, MCP access for agents,
-zsh-history/atuin import, and static cross-compiled release builds.
+sync to a central Postgres, the `/v1` query API, MCP access for agents
+(including the first curated `failure_summary` rollup and `how_did_i_run`
+recall verbs), zsh-history/atuin import, and static cross-compiled release
+builds.
 
 **Next:** cross-tool correlation — populating the reserved `corr_id` field so
-a recorded command can join to the agent session that ran it — and curating
-the MCP recall verbs based on dogfooding. See the
+a recorded command can join to the agent session that ran it — and further
+curated MCP recall verbs as dogfooding surfaces them. See the
 [vision & direction spec](docs/superpowers/specs/2026-06-25-yas-vision-and-direction-design.md).
 
 Stretch: bash + fish hooks; optional global query API on the server for a

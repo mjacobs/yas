@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -145,5 +146,189 @@ func TestRecentCommands_NoTextFilter(t *testing.T) {
 	}
 	if fs.last.Text != "" || fs.last.Host != "h" || !fs.last.AgentsOnly {
 		t.Errorf("recentCommands query wrong: %+v", fs.last)
+	}
+}
+
+// --- failure_summary (rollup) ---
+
+func TestFailureSummary_GroupsSortsExcludesPassers(t *testing.T) {
+	fs := &fakeSearcher{recs: []record.Record{
+		{ID: "1", Command: "false", ExitCode: ptr(1), StartTime: base.Add(1 * time.Minute)},
+		{ID: "2", Command: "false", ExitCode: ptr(1), StartTime: base.Add(5 * time.Minute)},
+		{ID: "3", Command: "false", ExitCode: ptr(2), StartTime: base.Add(3 * time.Minute)},
+		{ID: "4", Command: "go test ./...", ExitCode: ptr(1), StartTime: base.Add(2 * time.Minute)},
+		{ID: "5", Command: "go test ./...", ExitCode: ptr(1), StartTime: base.Add(4 * time.Minute)},
+		{ID: "6", Command: "curl x", ExitCode: ptr(7), StartTime: base.Add(6 * time.Minute)},
+		// A passer sneaks into the returned slice; it must never form a group.
+		{ID: "7", Command: "ls", ExitCode: ptr(0), StartTime: base.Add(9 * time.Minute)},
+	}}
+	ts := &toolset{search: fs}
+	_, out, err := ts.failureSummary(context.Background(), nil, failureSummaryIn{})
+	if err != nil {
+		t.Fatalf("failureSummary: %v", err)
+	}
+	if !fs.last.FailedOnly {
+		t.Errorf("failure_summary must request FailedOnly: %+v", fs.last)
+	}
+	if fs.last.Limit != scanCap {
+		t.Errorf("scan window Limit: got %d want %d", fs.last.Limit, scanCap)
+	}
+	if out.ScanTruncated {
+		t.Errorf("small dataset must not be Truncated")
+	}
+	if len(out.Failures) != 3 {
+		t.Fatalf("want 3 groups, got %d: %+v", len(out.Failures), out.Failures)
+	}
+	// Sorted by count desc, tie-break last_seen desc.
+	g0 := out.Failures[0]
+	if g0.Command != "false" || g0.Count != 3 ||
+		g0.LastSeen != base.Add(5*time.Minute).UTC().Format(time.RFC3339) ||
+		g0.LastExitCode == nil || *g0.LastExitCode != 1 {
+		t.Errorf("group 0 wrong: %+v", g0)
+	}
+	if out.Failures[1].Command != "go test ./..." || out.Failures[1].Count != 2 {
+		t.Errorf("group 1 wrong: %+v", out.Failures[1])
+	}
+	if out.Failures[2].Command != "curl x" || out.Failures[2].Count != 1 {
+		t.Errorf("group 2 wrong: %+v", out.Failures[2])
+	}
+	for _, g := range out.Failures {
+		if g.Command == "ls" {
+			t.Errorf("passing command leaked into rollup: %+v", g)
+		}
+	}
+}
+
+func TestFailureSummary_TopNAndScanCapTruncation(t *testing.T) {
+	recs := make([]record.Record, 3)
+	for i := range recs {
+		recs[i] = record.Record{
+			ID:        fmt.Sprint(i),
+			Command:   fmt.Sprintf("cmd%d", i),
+			ExitCode:  ptr(1),
+			StartTime: base.Add(time.Duration(i) * time.Minute),
+		}
+	}
+	// Injected small scan window: exactly scanCap rows returned -> Truncated.
+	fs := &fakeSearcher{recs: recs}
+	ts := &toolset{search: fs, scanCap: 3}
+	_, out, err := ts.failureSummary(context.Background(), nil, failureSummaryIn{Limit: 2})
+	if err != nil {
+		t.Fatalf("failureSummary: %v", err)
+	}
+	if fs.last.Limit != 3 {
+		t.Errorf("scan window Limit: got %d want 3", fs.last.Limit)
+	}
+	if !out.ScanTruncated {
+		t.Errorf("scan hitting the cap must set Truncated")
+	}
+	if len(out.Failures) != 2 {
+		t.Fatalf("Limit=2 should cap top-N at 2, got %d", len(out.Failures))
+	}
+
+	// Below the cap -> not Truncated.
+	fs2 := &fakeSearcher{recs: recs[:2]}
+	ts2 := &toolset{search: fs2, scanCap: 3}
+	_, out2, err := ts2.failureSummary(context.Background(), nil, failureSummaryIn{})
+	if err != nil {
+		t.Fatalf("failureSummary: %v", err)
+	}
+	if out2.ScanTruncated {
+		t.Errorf("below-cap scan must not be Truncated")
+	}
+}
+
+func TestFailureSummary_EmptyIsNonNilAndBadSinceErrors(t *testing.T) {
+	ts := &toolset{search: &fakeSearcher{}}
+	_, out, err := ts.failureSummary(context.Background(), nil, failureSummaryIn{})
+	if err != nil {
+		t.Fatalf("failureSummary: %v", err)
+	}
+	if out.Failures == nil {
+		t.Errorf("empty Failures must be [] not nil")
+	}
+	if _, _, err := ts.failureSummary(context.Background(), nil, failureSummaryIn{Since: "nope"}); err == nil {
+		t.Error("want error for bad since")
+	}
+}
+
+// --- how_did_i_run (recall) ---
+
+func TestHowDidIRun_CollapsesQuotedArgsAndAnchors(t *testing.T) {
+	fs := &fakeSearcher{recs: []record.Record{
+		{ID: "1", Command: `git commit -m "a"`, StartTime: base.Add(1 * time.Minute)},
+		{ID: "2", Command: `git commit -m "b"`, StartTime: base.Add(2 * time.Minute)},
+		{ID: "3", Command: `git status`, StartTime: base.Add(3 * time.Minute)},
+		{ID: "4", Command: `git status`, StartTime: base.Add(4 * time.Minute)},
+		{ID: "5", Command: `git status`, StartTime: base.Add(5 * time.Minute)},
+		{ID: "6", Command: `git status`, StartTime: base.Add(6 * time.Minute)},
+		{ID: "7", Command: `git status`, StartTime: base.Add(7 * time.Minute)},
+		// Non-matches: first-token basename is not exactly "git".
+		{ID: "8", Command: `grepgit foo`, StartTime: base.Add(8 * time.Minute)},
+		{ID: "9", Command: `digit 3`, StartTime: base.Add(9 * time.Minute)},
+		// Absolute path anchors to its basename.
+		{ID: "10", Command: `/usr/bin/git push`, StartTime: base.Add(10 * time.Minute)},
+	}}
+	ts := &toolset{search: fs}
+	_, out, err := ts.howDidIRun(context.Background(), nil, howDidIRunIn{Command: "git"})
+	if err != nil {
+		t.Fatalf("howDidIRun: %v", err)
+	}
+	if fs.last.Text != "git" || fs.last.Limit != scanCap || !fs.last.CommandTextOnly {
+		t.Errorf("anchor query wrong (must scope Text to the command column): %+v", fs.last)
+	}
+	if len(out.Patterns) != 3 {
+		t.Fatalf("want 3 patterns, got %d: %+v", len(out.Patterns), out.Patterns)
+	}
+	// Newest-first by last_seen.
+	if out.Patterns[0].Command != "/usr/bin/git push" || out.Patterns[0].Count != 1 {
+		t.Errorf("pattern 0 wrong: %+v", out.Patterns[0])
+	}
+	if out.Patterns[1].Command != "git status" || out.Patterns[1].Count != 5 {
+		t.Errorf("pattern 1 wrong: %+v", out.Patterns[1])
+	}
+	// Quoted-arg collapse: representative is the most-recent full line.
+	if out.Patterns[2].Command != `git commit -m "b"` || out.Patterns[2].Count != 2 {
+		t.Errorf("pattern 2 wrong: %+v", out.Patterns[2])
+	}
+	if out.Patterns[2].LastSeen != base.Add(2*time.Minute).UTC().Format(time.RFC3339) {
+		t.Errorf("collapsed group last_seen wrong: %+v", out.Patterns[2])
+	}
+}
+
+func TestHowDidIRun_SkipsEnvAssignmentWhenAnchoring(t *testing.T) {
+	fs := &fakeSearcher{recs: []record.Record{
+		{ID: "1", Command: `FOO=1 git status`, StartTime: base.Add(1 * time.Minute)},
+		{ID: "2", Command: `PATH=/x:/y BAR=2 /usr/bin/git log`, StartTime: base.Add(2 * time.Minute)},
+	}}
+	ts := &toolset{search: fs}
+	_, out, err := ts.howDidIRun(context.Background(), nil, howDidIRunIn{Command: "git"})
+	if err != nil {
+		t.Fatalf("howDidIRun: %v", err)
+	}
+	if len(out.Patterns) != 2 {
+		t.Fatalf("env-assignment prefixes must be skipped when anchoring, got %d: %+v",
+			len(out.Patterns), out.Patterns)
+	}
+}
+
+func TestHowDidIRun_RequiresCommandAndEmptyResult(t *testing.T) {
+	ts := &toolset{search: &fakeSearcher{}}
+	if _, _, err := ts.howDidIRun(context.Background(), nil, howDidIRunIn{}); err == nil {
+		t.Error("want error when command is empty")
+	}
+	fs := &fakeSearcher{recs: []record.Record{
+		{ID: "1", Command: "git status", StartTime: base},
+	}}
+	ts2 := &toolset{search: fs}
+	_, out, err := ts2.howDidIRun(context.Background(), nil, howDidIRunIn{Command: "docker"})
+	if err != nil {
+		t.Fatalf("howDidIRun: %v", err)
+	}
+	if len(out.Patterns) != 0 {
+		t.Errorf("no anchor match must yield 0 patterns, got %+v", out.Patterns)
+	}
+	if out.Patterns == nil {
+		t.Errorf("empty Patterns must be [] not nil")
 	}
 }

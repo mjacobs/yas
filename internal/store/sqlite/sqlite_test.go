@@ -241,6 +241,28 @@ func TestSearch_TextFTS(t *testing.T) {
 	eqIDs(t, searchIDs(t, db, ctx, store.Query{Text: "docker"}), "r3")
 }
 
+// CommandTextOnly scopes the FTS match to the command column: a term that
+// appears only in a record's cwd (a directory path) must not match. Default
+// Text still matches command OR cwd. Guards how_did_i_run against directory
+// paths crowding genuine invocations out of its scan window.
+func TestSearch_CommandTextOnly(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	recs := []record.Record{
+		// "git" only in the cwd path, not the command.
+		{ID: "cwdonly", Command: "ls -la", CWD: "/home/mj/git-repos/x", ExitCode: ptr(0), StartTime: base, CreatedAt: base},
+		// "git" is the actual command.
+		{ID: "cmd", Command: "git status", CWD: "/tmp", ExitCode: ptr(0), StartTime: base.Add(time.Minute), CreatedAt: base},
+	}
+	if err := db.Put(ctx, recs...); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Default: FTS matches command OR cwd, so both records match "git".
+	eqIDs(t, searchIDs(t, db, ctx, store.Query{Text: "git"}), "cwdonly", "cmd")
+	// Command-scoped: only the record whose command is git.
+	eqIDs(t, searchIDs(t, db, ctx, store.Query{Text: "git", CommandTextOnly: true}), "cmd")
+}
+
 // Whitespace-only text has no searchable tokens; it must not produce a MATCH ”
 // syntax error — it's treated as no text filter (matches everything).
 func TestSearch_BlankTextIsNoFilter(t *testing.T) {

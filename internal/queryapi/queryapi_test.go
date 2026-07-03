@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -245,7 +246,7 @@ func TestVersion(t *testing.T) {
 	if out.Version != "v1" {
 		t.Errorf("version: got %q want v1", out.Version)
 	}
-	if len(out.RecordFields) == 0 {
-		t.Errorf("record_fields must be non-empty")
+	if want := record.ContractFields(); !reflect.DeepEqual(out.RecordFields, want) {
+		t.Errorf("record_fields: got %v want %v", out.RecordFields, want)
 	}
 }

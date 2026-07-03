@@ -169,6 +169,56 @@ func TestPostgres_DeletedIsMonotonic(t *testing.T) {
 	}
 }
 
+// A second Put of the same id (the record-finish path) overwrites the mutable
+// fields but must NOT change the immutable command/executor/corr_id — and
+// must not create a duplicate row. Parity with sqlite's
+// TestPut_UpsertLastWriterWinsOnlyMutable (internal/store/sqlite/sqlite_test.go).
+func TestPostgres_UpsertLastWriterWinsOnlyMutable(t *testing.T) {
+	db, ctx := freshDB(t)
+
+	start := record.Record{
+		ID: idA, Command: "sleep 1", StartTime: base, CreatedAt: base,
+		Executor: "original-agent", CorrID: "orig-corr",
+	}
+	if err := db.Put(ctx, start); err != nil {
+		t.Fatalf("Put start: %v", err)
+	}
+	// finish: same id, exit+duration now known. Stray different command/executor/
+	// corr_id values here must be ignored (those fields are immutable).
+	finish := record.Record{
+		ID: idA, Command: "TAMPERED", StartTime: base, CreatedAt: base,
+		ExitCode: ptr(7), DurationMS: ptr(int64(1234)),
+		Executor: "TAMPERED-agent", CorrID: "TAMPERED-corr",
+	}
+	if err := db.Put(ctx, finish); err != nil {
+		t.Fatalf("Put finish: %v", err)
+	}
+
+	recs, _, err := db.Since(ctx, 0, 10)
+	if err != nil {
+		t.Fatalf("Since: %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("upsert must not duplicate: got %d rows", len(recs))
+	}
+	g := recs[0]
+	if g.Command != "sleep 1" {
+		t.Errorf("command must be immutable: got %q want %q", g.Command, "sleep 1")
+	}
+	if g.ExitCode == nil || *g.ExitCode != 7 {
+		t.Errorf("exit_code: got %v want 7", g.ExitCode)
+	}
+	if g.DurationMS == nil || *g.DurationMS != 1234 {
+		t.Errorf("duration_ms: got %v want 1234", g.DurationMS)
+	}
+	if g.Executor != "original-agent" {
+		t.Errorf("executor must be immutable: got %q want %q", g.Executor, "original-agent")
+	}
+	if g.CorrID != "orig-corr" {
+		t.Errorf("corr_id must be immutable: got %q want %q", g.CorrID, "orig-corr")
+	}
+}
+
 func TestPostgres_ExecutorCorrIDRoundTrip(t *testing.T) {
 	db, ctx := freshDB(t)
 	r := record.Record{ID: idA, Command: "deploy", StartTime: base, CreatedAt: base, Executor: "claude-code", CorrID: "sess-9"}

@@ -43,7 +43,7 @@ func NewHandler(s Searcher) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/search", searchHandler(s))
 	mux.HandleFunc("GET /v1/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, versionResponse{Version: ContractVersion, RecordFields: record.ContractFields})
+		writeJSON(w, http.StatusOK, versionResponse{Version: ContractVersion, RecordFields: record.ContractFields()})
 	})
 	mux.HandleFunc("GET /v1/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

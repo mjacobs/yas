@@ -54,6 +54,8 @@ func main() {
 		cmdImport(rest)
 	case "session":
 		cmdSession(rest)
+	case "digest":
+		cmdDigest(rest)
 	case "mcp":
 		cmdMCP(rest)
 	case "completion":
@@ -81,7 +83,7 @@ func route(args []string) (cmd string, rest []string) {
 	}
 	first := args[0]
 	switch first {
-	case "record", "search", "history", "serve", "sync", "import", "session", "mcp", "completion":
+	case "record", "search", "history", "serve", "sync", "import", "session", "digest", "mcp", "completion":
 		return first, args[1:]
 	case "version", "--version", "-v":
 		return "version", nil
@@ -874,8 +876,10 @@ func doHistory(ctx context.Context, st historyStore, opts historyOpts, w io.Writ
 
 // tombstone marks each record deleted and re-persists it. Put's upsert flips the
 // deleted flag and re-marks the row unsynced, so the deletion propagates on the
-// next sync to the server and every other machine.
-func tombstone(ctx context.Context, st historyStore, recs []record.Record) (int, error) {
+// next sync to the server and every other machine. It needs only Put, so it
+// takes the narrow recordStore — shared by `yas history` (delete/clear) and
+// `yas import --prune-live-dupes`.
+func tombstone(ctx context.Context, st recordStore, recs []record.Record) (int, error) {
 	if len(recs) == 0 {
 		return 0, nil
 	}
@@ -1166,6 +1170,38 @@ func doImport(ctx context.Context, st recordStore, recs []record.Record) (import
 // coincide with a live capture, so they are neither scanned for nor checked.
 var coverageEpoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// liveKeySet indexes SESSION-BEARING rows by (host, command, whole-second) so a
+// candidate command can be tested for a live-hook capture within ±1s. zsh
+// stamps whole seconds and the hook's clock may land just across a second
+// boundary, so a candidate at second S is "covered" by a live row at S-1, S, or
+// S+1 on the SAME host with the SAME command. This is the one definition of the
+// live-dedup key, shared by importCoverage (skip import candidates already
+// captured live) and doPruneLiveDupes (tombstone import skeletons already
+// captured live) so the two matchers can never drift.
+type liveKeySet map[string]struct{}
+
+// liveKey is the set's composite key. A NUL byte can't appear in a hostname or
+// a shell command, so the three fields join into one unambiguous string.
+func liveKey(host, cmd string, sec int64) string {
+	return host + "\x00" + strconv.FormatInt(sec, 10) + "\x00" + cmd
+}
+
+// add records a session-bearing row's (host, command, second).
+func (s liveKeySet) add(host, cmd string, sec int64) {
+	s[liveKey(host, cmd, sec)] = struct{}{}
+}
+
+// covers reports whether a session-bearing row exists on host with the same
+// command within ±1s of sec.
+func (s liveKeySet) covers(host, cmd string, sec int64) bool {
+	for _, x := range []int64{sec - 1, sec, sec + 1} {
+		if _, ok := s[liveKey(host, cmd, x)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // importCoverage answers "is this history entry already in the store?" — by
 // exact id, or as a live-hook capture of the same event.
 //
@@ -1203,10 +1239,7 @@ func importCoverage(ctx context.Context, st recordStore, recs []record.Record) (
 	}
 
 	ids := make(map[string]struct{})
-	seen := make(map[string]struct{})
-	key := func(host, cmd string, sec int64) string {
-		return host + "\x00" + strconv.FormatInt(sec, 10) + "\x00" + cmd
-	}
+	live := make(liveKeySet)
 	const page = 1000
 	for offset := 0; ; offset += page {
 		rows, err := st.Search(ctx, store.Query{
@@ -1226,7 +1259,7 @@ func importCoverage(ctx context.Context, st recordStore, recs []record.Record) (
 			if row.Session == "" {
 				continue // import-created skeleton, not live coverage
 			}
-			seen[key(row.Hostname, row.Command, row.StartTime.Unix())] = struct{}{}
+			live.add(row.Hostname, row.Command, row.StartTime.Unix())
 		}
 		if len(rows) < page {
 			break
@@ -1240,14 +1273,94 @@ func importCoverage(ctx context.Context, st recordStore, recs []record.Record) (
 		if r.StartTime.Before(coverageEpoch) {
 			return false // synthetic timestamp can't coincide with live capture
 		}
-		sec := r.StartTime.Unix()
-		for _, s := range []int64{sec - 1, sec, sec + 1} {
-			if _, ok := seen[key(r.Hostname, r.Command, s)]; ok {
-				return true
+		return live.covers(r.Hostname, r.Command, r.StartTime.Unix())
+	}, nil
+}
+
+// pruneBatch caps how many skeletons each prune round tombstones at once,
+// mirroring histClear's clearBatch.
+const pruneBatch = 500
+
+// doPruneLiveDupes is the store-only maintenance path behind
+// `yas import --prune-live-dupes`. It tombstones "import skeletons" — rows with
+// no session AND no exit code, the exact signature a pre-h4t6 importer left
+// beside every live-captured record — but ONLY those for which a session-bearing
+// live capture of the SAME command exists on the SAME host within ±1s. Those
+// skeletons are historical duplicates of real live rows; tombstoning them
+// (re-Put with Deleted=true) re-marks them unsynced, so the prune propagates to
+// Postgres and every replica on the next sync — which is the whole point.
+//
+// apply=false is a dry run: it only COUNTS the matches and mutates nothing.
+// apply=true tombstones them. Already-deleted rows are skipped, so it is
+// idempotent — a second apply run tombstones 0.
+//
+// Conservative by construction: the ONLY candidates are rows matching the
+// skeleton signature exactly (Session=="" AND ExitCode==nil AND !Deleted), and
+// the only ones tombstoned are those with a live ±1s same-host same-command
+// peer (via the shared liveKeySet, identical to importCoverage). A skeleton with
+// no live peer, and any session-bearing or exit-bearing row, is never touched.
+func doPruneLiveDupes(ctx context.Context, st recordStore, apply bool) (n int, err error) {
+	live := make(liveKeySet)
+	var skeletons []record.Record
+	const page = 1000
+	for offset := 0; ; offset += page {
+		// IncludeDeleted so a session-bearing row still covers its command after
+		// a later tombstone (deletions are honored, not resurrected — parity with
+		// importCoverage), and already-tombstoned skeletons are visible so the
+		// candidate path can skip them. Nothing is mutated during the scan, so
+		// offset paging is stable.
+		rows, err := st.Search(ctx, store.Query{
+			IncludeDeleted: true,
+			Limit:          page,
+			Offset:         offset,
+		})
+		if err != nil {
+			return 0, err
+		}
+		for _, row := range rows {
+			if row.Session != "" {
+				// A live capture covers its command even after a later tombstone,
+				// exactly as importCoverage's set does (that's the shared-helper
+				// invariant); add it BEFORE the Deleted check so a redacted live
+				// row still prunes its skeleton duplicate.
+				live.add(row.Hostname, row.Command, row.StartTime.Unix())
+				continue // a live capture, never a candidate
+			}
+			if row.Deleted {
+				continue // already-tombstoned skeleton — skip so prune stays idempotent
+			}
+			if row.ExitCode == nil {
+				skeletons = append(skeletons, row) // exact import-skeleton signature
 			}
 		}
-		return false
-	}, nil
+		if len(rows) < page {
+			break
+		}
+	}
+
+	// A skeleton can precede its live peer in scan order, so filter only after
+	// the full scan has built the complete live set.
+	var dupes []record.Record
+	for _, s := range skeletons {
+		if live.covers(s.Hostname, s.Command, s.StartTime.Unix()) {
+			dupes = append(dupes, s)
+		}
+	}
+	if !apply {
+		return len(dupes), nil
+	}
+	for i := 0; i < len(dupes); i += pruneBatch {
+		end := i + pruneBatch
+		if end > len(dupes) {
+			end = len(dupes)
+		}
+		m, err := tombstone(ctx, st, dupes[i:end])
+		n += m
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
 }
 
 // cmdImport implements `yas import --from <zsh-history|atuin> [--file <path>]`,
@@ -1258,7 +1371,17 @@ func cmdImport(args []string) {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
 	from := fs.String("from", "zsh-history", "history source format (zsh-history|atuin)")
 	file := fs.String("file", "", "history source path (default: ~/.zsh_history, or ~/.local/share/atuin/history.db with --from atuin)")
+	prune := fs.Bool("prune-live-dupes", false, "store-only maintenance: tombstone import skeletons already captured live (dry run unless --yes; ignores --from/--file)")
+	yes := fs.Bool("yes", false, "apply --prune-live-dupes (without it the prune is a dry run that only counts)")
 	_ = fs.Parse(args)
+
+	// --prune-live-dupes is a PURE STORE OPERATION: it scans the local replica
+	// and never reads a history file, so --from/--file are ignored.
+	if *prune {
+		cmdImportPrune(*yes)
+		return
+	}
+
 	if *from != "zsh-history" && *from != "atuin" {
 		fmt.Fprintf(os.Stderr, "yas import: unsupported --from %q (supported: zsh-history, atuin)\n", *from)
 		os.Exit(2)
@@ -1302,6 +1425,28 @@ func cmdImport(args []string) {
 		imported, path, skipped)
 }
 
+// cmdImportPrune runs `yas import --prune-live-dupes` against the local store.
+// It is dry-run by default (apply=false): it only counts and reports. With
+// --yes (apply=true) it tombstones the matched skeletons. Reports go to stderr,
+// matching the other import messages; exit is 0 on success.
+func cmdImportPrune(apply bool) {
+	st, _, closeStore := openStore()
+	defer closeStore()
+
+	n, err := doPruneLiveDupes(context.Background(), st, apply)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "yas import:", err)
+		os.Exit(1)
+	}
+	if apply {
+		fmt.Fprintf(os.Stderr, "yas import: tombstoned %d import skeleton%s already captured live\n",
+			n, plural(n, "", "s"))
+		return
+	}
+	fmt.Fprintf(os.Stderr, "yas import: would tombstone %d import skeleton%s already captured live (dry run; re-run with --yes to apply)\n",
+		n, plural(n, "", "s"))
+}
+
 // importPath returns the explicit --file path when set, else the source's
 // default location under $HOME.
 func importPath(file string, underHome ...string) string {
@@ -1330,9 +1475,11 @@ usage:
   yas history -d <offset|start-end>     delete an entry/range by its number
   yas history -c --yes                  delete ALL history (tombstones sync everywhere)
   yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit]
+  yas digest [--since t] [--until t] [--json]   today's commands grouped by host/dir, failures flagged
   yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API
   yas sync                              push/pull with the central server
   yas import [--from zsh-history|atuin] [--file <path>]   backfill from shell history or atuin
+  yas import --prune-live-dupes [--yes]   tombstone import skeletons already captured live (dry run unless --yes)
   yas mcp    [--http <addr>] [--http-allow-insecure]   MCP server (read-only tools) over stdio/HTTP
   yas completion zsh                    print the zsh completion script (zsh only for now)
   yas version

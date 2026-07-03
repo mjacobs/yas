@@ -152,6 +152,11 @@ func filterClause(q store.Query) (string, []any) {
 		args = append(args, q.ExcludeID)
 	}
 	if fts := ftsQuery(q.Text); fts != "" {
+		if q.CommandTextOnly {
+			// Scope the FTS5 match to the command column only (records_fts also
+			// indexes cwd), so a program name isn't matched via directory paths.
+			fts = "command : (" + fts + ")"
+		}
 		sb.WriteString(` AND r.rowid IN (SELECT rowid FROM records_fts WHERE records_fts MATCH ?)`)
 		args = append(args, fts)
 	}

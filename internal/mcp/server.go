@@ -20,6 +20,8 @@ const (
 	ToolRecentCommands = "recent_commands"
 	ToolWhatFailed     = "what_failed"
 	ToolCommandStatus  = "command_status"
+	ToolFailureSummary = "failure_summary"
+	ToolHowDidIRun     = "how_did_i_run"
 )
 
 // ServeOptions configures the MCP server. Search is required; Version is
@@ -79,6 +81,26 @@ func newServer(opts ServeOptions) *mcp.Server {
 			"cwd, host, and executor. found is false when the id is unknown.",
 		Annotations: readOnly,
 	}, t.commandStatus)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: ToolFailureSummary,
+		Description: "ROLLUP of recurring failures: the top commands that keep exiting non-zero, each " +
+			"with how many times it failed and when it last failed. Scope by host, cwd, or an RFC3339 " +
+			"`since`. Reach for this for 'what keeps breaking here?' — the aggregate view, where " +
+			"what_failed lists the individual failures. Counts are exact within a recent scan window; " +
+			"`truncated` means older failures beyond the window weren't counted.",
+		Annotations: readOnly,
+	}, t.failureSummary)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: ToolHowDidIRun,
+		Description: "RECALL how you've invoked a program: given a program name (git, ssh, systemctl, …), " +
+			"return the distinct argument patterns you've run it with, newest-first, each with a " +
+			"representative full command line and a count. Near-duplicates that differ only inside quotes " +
+			"(e.g. commit messages) collapse together. Reach for this for 'what were the flags/args I used " +
+			"with X?'. Exact within a recent scan window; `truncated` means more history exists beyond it.",
+		Annotations: readOnly,
+	}, t.howDidIRun)
 
 	return s
 }

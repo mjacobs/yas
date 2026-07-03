@@ -16,6 +16,17 @@ const (
 	// commandMaxChars caps a command string in tool output; truncation is
 	// flagged so a client can re-fetch the full record by id if it needs it.
 	commandMaxChars = 4000
+
+	// scanCap bounds how many raw records the rollup/recall verbs
+	// (failure_summary, how_did_i_run) pull before folding in Go. Results are
+	// exact within this recent window; a verb sets its Truncated flag when the
+	// scan hits the cap, signalling older matches may exist beyond it.
+	scanCap = 2000
+
+	// Top-N group limits for failure_summary. how_did_i_run reuses
+	// defaultLimit/maxLimit (20/100).
+	failureSummaryDefaultLimit = 10
+	failureSummaryMaxLimit     = 50
 )
 
 // commandOut is the compact per-record shape every tool returns. It mirrors the
