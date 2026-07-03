@@ -250,7 +250,7 @@ func TestSearch_CommandTextOnly(t *testing.T) {
 	ctx := context.Background()
 	recs := []record.Record{
 		// "git" only in the cwd path, not the command.
-		{ID: "cwdonly", Command: "ls -la", CWD: "/home/mj/git-repos/x", ExitCode: ptr(0), StartTime: base, CreatedAt: base},
+		{ID: "cwdonly", Command: "ls -la", CWD: "/srv/git-repos/x", ExitCode: ptr(0), StartTime: base, CreatedAt: base},
 		// "git" is the actual command.
 		{ID: "cmd", Command: "git status", CWD: "/tmp", ExitCode: ptr(0), StartTime: base.Add(time.Minute), CreatedAt: base},
 	}
