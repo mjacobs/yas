@@ -169,7 +169,7 @@ func TestRenderDigest_JSONEmptyIsBracketsNotNull(t *testing.T) {
 	d := buildDigest(nil, since, until)
 
 	var buf bytes.Buffer
-	if err := renderDigest(&buf, d, true); err != nil {
+	if err := renderDigest(&buf, d, true, newCLIStyles(false)); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -203,7 +203,7 @@ func TestRenderDigest_JSONStructureAndFailedCommandsBrackets(t *testing.T) {
 	d := buildDigest(recs, since, until)
 
 	var buf bytes.Buffer
-	if err := renderDigest(&buf, d, true); err != nil {
+	if err := renderDigest(&buf, d, true, newCLIStyles(false)); err != nil {
 		t.Fatal(err)
 	}
 	// A group with no failures must still emit failed_commands: [] (never null).
@@ -235,7 +235,7 @@ func TestRenderDigest_HumanEmpty(t *testing.T) {
 	d := buildDigest(nil, since, until)
 
 	var buf bytes.Buffer
-	if err := renderDigest(&buf, d, false); err != nil {
+	if err := renderDigest(&buf, d, false, newCLIStyles(false)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "no commands") {
@@ -254,7 +254,7 @@ func TestRenderDigest_Human(t *testing.T) {
 	d := buildDigest(recs, since, until)
 
 	var buf bytes.Buffer
-	if err := renderDigest(&buf, d, false); err != nil {
+	if err := renderDigest(&buf, d, false, newCLIStyles(false)); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -265,10 +265,39 @@ func TestRenderDigest_Human(t *testing.T) {
 	}
 }
 
+// With color on the human digest carries ANSI escapes (the accented title, the
+// red failure count and ✗); with color off it stays plain. The failing command
+// text is present either way. Mirrors the search color tests.
+func TestRenderDigest_HumanColor(t *testing.T) {
+	base := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	since := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC)
+	d := buildDigest([]record.Record{
+		drec("host-a", "/proj", "make lint", ptr(1), base),
+	}, since, until)
+
+	var plain, color bytes.Buffer
+	if err := renderDigest(&plain, d, false, newCLIStyles(false)); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderDigest(&color, d, false, newCLIStyles(true)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "\x1b[") {
+		t.Fatalf("plain digest must not contain ANSI escapes:\n%q", plain.String())
+	}
+	if !strings.Contains(color.String(), "\x1b[") {
+		t.Fatalf("colored digest should contain ANSI escapes:\n%q", color.String())
+	}
+	if !strings.Contains(plain.String(), "make lint") || !strings.Contains(color.String(), "make lint") {
+		t.Fatalf("digest must keep the failing command text:\nplain=%q\ncolor=%q", plain.String(), color.String())
+	}
+}
+
 func TestParseDigestArgs_DefaultWindowIsToday(t *testing.T) {
 	now := time.Date(2026, 7, 2, 14, 30, 45, 0, time.Local)
 
-	since, until, asJSON, err := parseDigestArgs(nil, now)
+	since, until, asJSON, _, err := parseDigestArgs(nil, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +316,7 @@ func TestParseDigestArgs_DefaultWindowIsToday(t *testing.T) {
 func TestParseDigestArgs_ExplicitWindowAndJSON(t *testing.T) {
 	now := time.Date(2026, 7, 2, 14, 0, 0, 0, time.UTC)
 
-	since, until, asJSON, err := parseDigestArgs(
+	since, until, asJSON, _, err := parseDigestArgs(
 		[]string{"--since", "2026-07-01T00:00:00Z", "--until", "2026-07-02T00:00:00Z", "--json"}, now)
 	if err != nil {
 		t.Fatal(err)
@@ -312,7 +341,7 @@ func TestParseDigestArgs_Errors(t *testing.T) {
 		"stray operand": {"extra-arg"},
 	}
 	for name, args := range cases {
-		if _, _, _, err := parseDigestArgs(args, now); err == nil {
+		if _, _, _, _, err := parseDigestArgs(args, now); err == nil {
 			t.Fatalf("%s: expected an error for args %v", name, args)
 		}
 	}

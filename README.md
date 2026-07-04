@@ -5,7 +5,7 @@
 **A queryable record of everything you run.** yas is a **local-first**
 _execution substrate_: it records every command you run into a fast local
 database, syncs it to a small central server, and exposes the data through a
-stable **HTTP+JSON API** (an MCP surface is on the roadmap) so you can bring —
+stable **HTTP+JSON API** (plus a read-only **MCP** surface for agents) so you can bring —
 or write — _any_ front-end: a CLI, `fzf`, a web dashboard, or a coding agent.
 The richness, and the product itself, is the data and the contract, not a
 bespoke interface. yas runs **no UI and no model of its own** — reasoning
@@ -310,10 +310,10 @@ any later live write). No CRDT needed.
 ## Status & roadmap
 
 **Working today:** live zsh capture, local FTS5 search, session views,
-sync to a central Postgres, the `/v1` query API, MCP access for agents
-(including the first curated `failure_summary` rollup and `how_did_i_run`
-recall verbs), zsh-history/atuin import, and static cross-compiled release
-builds.
+sync to a central Postgres, the `/v1` query API, the `yas digest` cross-stream
+synthesis, MCP access for agents (including the first curated `failure_summary`
+rollup and `how_did_i_run` recall verbs), zsh-history/atuin import, and static
+cross-compiled release builds.
 
 **Next:** cross-tool correlation — populating the reserved `corr_id` field so
 a recorded command can join to the agent session that ran it — and further
