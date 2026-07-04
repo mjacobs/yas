@@ -1475,7 +1475,7 @@ usage:
   yas history -d <offset|start-end>     delete an entry/range by its number
   yas history -c --yes                  delete ALL history (tombstones sync everywhere)
   yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit]
-  yas digest [--since t] [--until t] [--json]   today's commands grouped by host/dir, failures flagged
+  yas digest [--since t] [--until t] [--json] [--no-color]   today's commands grouped by host/dir, failures flagged
   yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API
   yas sync                              push/pull with the central server
   yas import [--from zsh-history|atuin] [--file <path>]   backfill from shell history or atuin

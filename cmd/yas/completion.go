@@ -47,6 +47,7 @@ _yas() {
     'search:full-text search across history'
     'history:list recent entries (the default command)'
     'session:show one shell session as a linear timeline'
+    'digest:commands grouped by host and directory, failures flagged'
     'serve:run the localhost HTTP+JSON query API'
     'sync:push/pull with the central server'
     'import:backfill from shell history or atuin'
@@ -127,6 +128,13 @@ _yas() {
         '--no-time[hide the time column]' \
         '--no-exit[hide the exit column]' \
         '::session token or id:'
+      ;;
+    digest)
+      _arguments \
+        '--since[start of time window (RFC3339)]:time:' \
+        '--until[end of time window (RFC3339)]:time:' \
+        '--json[emit the JSON digest contract]' \
+        '--no-color[disable ANSI colors]'
       ;;
     serve)
       _arguments '--addr[listen address]:address:'

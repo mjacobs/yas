@@ -22,7 +22,7 @@ func TestDoCompletion_ZshOffersEveryCommand(t *testing.T) {
 	// this list mirrors route's switch — including completion itself.
 	for _, sub := range []string{
 		"record", "search", "history", "serve", "sync", "import",
-		"session", "mcp", "completion", "version", "help",
+		"session", "digest", "mcp", "completion", "version", "help",
 	} {
 		if !strings.Contains(out, "'"+sub+":") {
 			t.Errorf("script does not offer subcommand %q", sub)
@@ -34,6 +34,7 @@ func TestDoCompletion_ZshOffersEveryCommand(t *testing.T) {
 	for _, want := range []string{
 		"--from", "zsh-history", "atuin", "--json", "--failed",
 		"--cwd[filter by working directory]",
+		"--since[start of time window (RFC3339)]", // digest stanza
 		"--http-allow-insecure[",
 	} {
 		if !strings.Contains(out, want) {

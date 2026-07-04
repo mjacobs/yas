@@ -27,6 +27,9 @@ trap 'rm -rf "$BIN" "$DATA"' EXIT
 
 go build -o "$BIN/yas" "$ROOT/cmd/yas"
 # CLICOLOR_FORCE makes yas emit ANSI even though freeze captures through a pipe.
+# NO_COLOR wins over CLICOLOR_FORCE in yas' color gate, so a caller that exports
+# it globally would otherwise get plain (non-color) screenshots — clear it here.
+unset NO_COLOR
 export PATH="$BIN:$PATH" YAS_DATA_DIR="$DATA" CLICOLOR_FORCE=1
 
 ### Seed synthetic data ######################################################
