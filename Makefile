@@ -21,7 +21,7 @@ GO_BUILD_FLAGS := -trimpath -ldflags '$(GO_LDFLAGS)'
 # modernc.org/sqlite. `make cross` fails loudly if anything pulls in cgo.
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: all build test vet lint cross smoke install uninstall release clean
+.PHONY: all build test vet lint cross smoke screenshots install uninstall release clean
 
 all: build test
 
@@ -48,6 +48,11 @@ cross:
 
 smoke: build
 	./scripts/smoke.sh
+
+# Regenerate the README terminal screenshots over synthetic demo data.
+# Needs `freeze` (go install github.com/charmbracelet/freeze@latest).
+screenshots:
+	./scripts/screenshots.sh
 
 # Build the cgo-free static agent with the version stamped in and install it.
 install:

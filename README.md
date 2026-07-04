@@ -22,6 +22,35 @@ for the full positioning.
 > wire up (e.g. your existing `fzf` widget, now fed by yas across every
 > machine).
 
+## See it
+
+**`yas history`** — recent commands, colorized by exit status (green ✓ / red ✗ with the code):
+
+![yas history: a colorized command timeline — entry number, timestamp, a green check or red cross with exit code, session token, and the command line](docs/img/history.png)
+
+<details><summary>plain-text version</summary>
+
+```text
+    1  2026-07-04 00:34:15  [0]  iv1tspi  go build ./...
+    2  2026-07-04 00:34:15  [0]  iv1tspi  go test ./...
+    3  2026-07-04 00:34:15  [1]  iv1tspi  make lint
+    4  2026-07-04 00:34:15  [0]  iv1tspi  git commit -m 'add limiter'
+    5  2026-07-04 00:34:15  [1]  iv1tspi  pnpm test
+    6  2026-07-04 00:34:15  [0]  iv1tspi  git push origin main
+```
+
+</details>
+
+**`yas digest`** — today's commands grouped by host and directory, failures flagged:
+
+![yas digest: commands today grouped by host and working directory, each group showing a total, a failure count, and the failed commands marked with a cross](docs/img/digest.png)
+
+**`yas search <term>`** — full-text search over the local replica:
+
+![yas search git: matching commands with timestamp, session token, and the command line](docs/img/search.png)
+
+<sub>Screenshots use synthetic demo data — regenerate with <code>make screenshots</code> (via <a href="https://github.com/charmbracelet/freeze">charmbracelet/freeze</a>).</sub>
+
 ## Non-goals
 
 - **The core never seizes your keys or screen.** No _forced_ `Ctrl-R`/up-arrow
