@@ -41,7 +41,8 @@ for the full positioning.
 
 </details>
 
-**`yas digest`** — today's commands grouped by host and directory, failures flagged:
+**`yas digest`** — today's commands grouped by host and git project (repo root,
+falling back to directory), failures flagged:
 
 ![yas digest: commands today grouped by host and working directory, each group showing a total, a failure count, and the failed commands marked with a cross](docs/img/digest.png)
 

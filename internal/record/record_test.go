@@ -35,6 +35,21 @@ func TestRecordJSON_OmitsEmptyExecutorCorrID(t *testing.T) {
 	}
 }
 
+func TestRecordJSON_RepoRootAndBranch(t *testing.T) {
+	set := Record{ID: "i", Command: "c", StartTime: base, CreatedAt: base, RepoRoot: "/work/x/proj", Branch: "feat/y"}
+	s := string(mustJSON(t, set))
+	if !strings.Contains(s, `"repo_root":"/work/x/proj"`) {
+		t.Errorf("repo_root missing: %s", s)
+	}
+	if !strings.Contains(s, `"branch":"feat/y"`) {
+		t.Errorf("branch missing: %s", s)
+	}
+	empty := string(mustJSON(t, Record{ID: "i", Command: "c", StartTime: base, CreatedAt: base}))
+	if strings.Contains(empty, "repo_root") || strings.Contains(empty, "branch") {
+		t.Errorf("empty repo_root/branch must be omitted: %s", empty)
+	}
+}
+
 func TestIsAgent(t *testing.T) {
 	for _, c := range []struct {
 		exec string
@@ -57,6 +72,7 @@ func TestRecordJSON_ContractFields(t *testing.T) {
 		ID: "i", Command: "c", CWD: "d", Hostname: "h", Session: "s", Shell: "zsh",
 		Username: "u", ExitCode: ptr(0), StartTime: base, DurationMS: ptr(int64(1)),
 		CreatedAt: base, Deleted: true, Executor: "human", CorrID: "x",
+		RepoRoot: "/repo", Branch: "main",
 	}
 	got := jsonKeysInOrder(t, mustJSON(t, r))
 	want := ContractFields()
@@ -135,14 +151,16 @@ func TestValidate_CommandLengthCap(t *testing.T) {
 func TestValidate_FieldLengthCaps(t *testing.T) {
 	valid := Record{ID: "i", Command: "c", StartTime: base, CreatedAt: base}
 	set := map[string]func(*Record, string){
-		"id":       func(r *Record, v string) { r.ID = v },
-		"cwd":      func(r *Record, v string) { r.CWD = v },
-		"hostname": func(r *Record, v string) { r.Hostname = v },
-		"session":  func(r *Record, v string) { r.Session = v },
-		"shell":    func(r *Record, v string) { r.Shell = v },
-		"username": func(r *Record, v string) { r.Username = v },
-		"executor": func(r *Record, v string) { r.Executor = v },
-		"corr_id":  func(r *Record, v string) { r.CorrID = v },
+		"id":        func(r *Record, v string) { r.ID = v },
+		"cwd":       func(r *Record, v string) { r.CWD = v },
+		"hostname":  func(r *Record, v string) { r.Hostname = v },
+		"session":   func(r *Record, v string) { r.Session = v },
+		"shell":     func(r *Record, v string) { r.Shell = v },
+		"username":  func(r *Record, v string) { r.Username = v },
+		"executor":  func(r *Record, v string) { r.Executor = v },
+		"corr_id":   func(r *Record, v string) { r.CorrID = v },
+		"repo_root": func(r *Record, v string) { r.RepoRoot = v },
+		"branch":    func(r *Record, v string) { r.Branch = v },
 	}
 	for name, apply := range set {
 		at := valid

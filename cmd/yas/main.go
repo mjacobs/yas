@@ -25,6 +25,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mjacobs/yas/internal/config"
+	"github.com/mjacobs/yas/internal/gitmeta"
 	"github.com/mjacobs/yas/internal/histimport"
 	"github.com/mjacobs/yas/internal/queryapi"
 	"github.com/mjacobs/yas/internal/record"
@@ -167,6 +168,13 @@ func cmdRecord(args []string) {
 		st, cfg, closeStore := openStore()
 		defer closeStore()
 
+		// Derive the git repo root + branch of the recorded cwd at capture time.
+		// This is unrecoverable after the fact (the checkout may move/change), so
+		// it's captured live and only here — never on import, whose historical
+		// cwds no longer map to today's filesystem. gitmeta is a bounded, offline
+		// stat-walk that yields empty on any error, keeping the record path sacred.
+		repoRoot, branch := gitmeta.Detect(*cwd)
+
 		id, err := doRecordStart(context.Background(), st, time.Now(), record.Record{
 			Command:  *command,
 			CWD:      *cwd,
@@ -175,6 +183,8 @@ func cmdRecord(args []string) {
 			Executor: *author,
 			Hostname: cfg.Hostname,
 			Username: currentUsername(),
+			RepoRoot: repoRoot,
+			Branch:   branch,
 		})
 		if err != nil {
 			// Never print a bogus id to stdout — the hook reads stdout as the id.

@@ -74,8 +74,8 @@ func (d *DB) Close() error { d.pool.Close(); return nil }
 // the skipped value is a harmless gap.
 const upsertSQL = `
 INSERT INTO records
-    (id, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, executor, corr_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    (id, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, executor, corr_id, repo_root, branch)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 ON CONFLICT (id) DO UPDATE SET
     exit_code   = EXCLUDED.exit_code,
     duration_ms = EXCLUDED.duration_ms,
@@ -101,7 +101,7 @@ func (d *DB) Put(ctx context.Context, recs ...record.Record) error {
 		}
 		if _, err := tx.Exec(ctx, upsertSQL,
 			r.ID, r.Command, r.CWD, r.Hostname, r.Session, r.Shell, r.Username,
-			r.ExitCode, r.StartTime, r.DurationMS, r.CreatedAt, r.Deleted, r.Executor, r.CorrID,
+			r.ExitCode, r.StartTime, r.DurationMS, r.CreatedAt, r.Deleted, r.Executor, r.CorrID, r.RepoRoot, r.Branch,
 		); err != nil {
 			return err
 		}
@@ -117,7 +117,7 @@ func (d *DB) HighSeq(ctx context.Context) (int64, error) {
 }
 
 const sinceSQL = `
-SELECT id::text, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, COALESCE(executor,''), COALESCE(corr_id,''), seq
+SELECT id::text, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, COALESCE(executor,''), COALESCE(corr_id,''), COALESCE(repo_root,''), COALESCE(branch,''), seq
 FROM records WHERE seq > $1 ORDER BY seq ASC LIMIT $2`
 
 // Since returns up to limit records with seq greater than seq, ordered by seq
@@ -141,7 +141,7 @@ func (d *DB) Since(ctx context.Context, seq int64, limit int) ([]record.Record, 
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Command, &r.CWD, &r.Hostname, &r.Session, &r.Shell, &r.Username,
-			&exit, &r.StartTime, &dur, &r.CreatedAt, &r.Deleted, &r.Executor, &r.CorrID, &rseq,
+			&exit, &r.StartTime, &dur, &r.CreatedAt, &r.Deleted, &r.Executor, &r.CorrID, &r.RepoRoot, &r.Branch, &rseq,
 		); err != nil {
 			return nil, seq, err
 		}

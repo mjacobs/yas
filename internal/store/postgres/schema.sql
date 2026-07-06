@@ -23,13 +23,17 @@ CREATE TABLE IF NOT EXISTS records (
     deleted     BOOLEAN     NOT NULL DEFAULT false, -- tombstone
     executor    TEXT,                               -- who/what ran it (NULL/'' = human)
     corr_id     TEXT,                               -- cross-tool correlation key (reserved)
+    repo_root   TEXT,                               -- git repo root of cwd at capture (NULL off-repo/imported)
+    branch      TEXT,                               -- git branch at capture (NULL off-repo/detached/imported)
     seq         BIGINT      NOT NULL DEFAULT nextval('records_seq'),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Additive migrations for databases created before these columns existed.
-ALTER TABLE records ADD COLUMN IF NOT EXISTS executor TEXT;
-ALTER TABLE records ADD COLUMN IF NOT EXISTS corr_id  TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS executor  TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS corr_id   TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS repo_root TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS branch    TEXT;
 
 -- Pull ordering / cursor lookups.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_records_seq ON records(seq);

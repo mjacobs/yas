@@ -26,8 +26,12 @@ the contract version and field set at runtime.
 | `deleted` | bool | Tombstone. Omitted when false. |
 | `executor` | string | Who/what ran it: `human` \| `claude-code` \| `codex` \| `ci` \| ... Empty = human. Omitted when empty. |
 | `corr_id` | string | Cross-tool correlation key (e.g. an agentsview session). Reserved; populated in a later milestone. Omitted when empty. |
+| `repo_root` | string | Git repo root of `cwd`, derived at capture time. Empty off-repo and on imported history (unrecoverable after the fact). Omitted when empty. |
+| `branch` | string | Git branch at capture time. Empty on a detached HEAD, off-repo, and on imported history. Omitted when empty. |
 
-`seq` is sync-transport metadata and **never** appears in record JSON.
+These are additive, back-compatible v1 fields (like `executor`/`corr_id`
+before them): a fully-populated record gains the keys, old records simply lack
+them. `seq` is sync-transport metadata and **never** appears in record JSON.
 
 ## Endpoints
 

@@ -50,20 +50,34 @@ type Digest struct {
 	Groups []DigestGroup
 }
 
-// DigestGroup summarizes every command in one (host, cwd) location over the
+// DigestGroup summarizes every command in one (host, location) group over the
 // window: the total Count, how many Failures (non-nil, non-zero exit), and a
 // deduped, capped, truncated sample of the distinct failing command strings,
 // most-recent-first.
 //
-// Grouping key is (host, cwd) — the exact stored working directory. Records do
-// not yet carry a git repo-root/project field, so this dir grouping is the
-// deterministic stand-in; refining it to a git root is a future enhancement.
+// Grouping is by PROJECT when a record carries a git repo root (xvt6): all
+// commands under one repo — however deep their cwd — collapse into a single
+// group. Records without a repo root (off-repo, or imported before the field
+// existed) fall back to grouping by exact cwd. CWD holds the group's display
+// location (the repo root for a project group, else the cwd); RepoRoot is set
+// only for project groups, so a consumer can tell the two apart.
 type DigestGroup struct {
 	Host           string
 	CWD            string
+	RepoRoot       string
 	Count          int
 	Failures       int
 	FailedCommands []string
+}
+
+// groupLocation returns the location a record groups under: its git repo root
+// when present, else its exact cwd. Empty repo root (off-repo/imported) falls
+// back to cwd so those records still group deterministically.
+func groupLocation(r record.Record) string {
+	if r.RepoRoot != "" {
+		return r.RepoRoot
+	}
+	return r.CWD
 }
 
 // isFailure reports whether a record is a finished, non-zero exit. A nil exit
@@ -110,11 +124,21 @@ func buildDigest(recs []record.Record, since, until time.Time) Digest {
 	groups := map[string]*agg{}
 	for i := range inWindow {
 		r := inWindow[i]
-		key := r.Hostname + "\x00" + r.CWD
+		loc := groupLocation(r)
+		// The grouping mode is part of the key: a project group (repo root) and a
+		// bare-cwd group must stay distinct even when their location strings are
+		// equal (an imported record whose cwd was /repo vs a live record inside the
+		// /repo checkout). Without this they'd merge and the emitted repo_root would
+		// depend on record order.
+		mode := "c"
+		if r.RepoRoot != "" {
+			mode = "p"
+		}
+		key := r.Hostname + "\x00" + mode + "\x00" + loc
 		a := groups[key]
 		if a == nil {
 			a = &agg{
-				group: &DigestGroup{Host: r.Hostname, CWD: r.CWD, FailedCommands: []string{}},
+				group: &DigestGroup{Host: r.Hostname, CWD: loc, RepoRoot: r.RepoRoot, FailedCommands: []string{}},
 				seen:  map[string]struct{}{},
 			}
 			groups[key] = a
@@ -133,13 +157,18 @@ func buildDigest(recs []record.Record, since, until time.Time) Digest {
 	for _, a := range groups {
 		d.Groups = append(d.Groups, *a.group)
 	}
-	// (host, cwd) pairs are unique per group, so this fully orders the slice
-	// deterministically regardless of the map's iteration order.
+	// Order by (host, cwd, repo_root). RepoRoot is the final tiebreak so a
+	// project group and a bare-cwd group that share a display location ("" sorts
+	// before the repo path) still order deterministically — the grouping key
+	// already keeps them as separate groups.
 	sort.Slice(d.Groups, func(i, j int) bool {
 		if d.Groups[i].Host != d.Groups[j].Host {
 			return d.Groups[i].Host < d.Groups[j].Host
 		}
-		return d.Groups[i].CWD < d.Groups[j].CWD
+		if d.Groups[i].CWD != d.Groups[j].CWD {
+			return d.Groups[i].CWD < d.Groups[j].CWD
+		}
+		return d.Groups[i].RepoRoot < d.Groups[j].RepoRoot
 	})
 	return d
 }
@@ -172,6 +201,7 @@ type digestEnvelope struct {
 type digestGroupWire struct {
 	Host           string   `json:"host"`
 	CWD            string   `json:"cwd"`
+	RepoRoot       string   `json:"repo_root,omitempty"` // set only for git-project groups; a bare-cwd group omits it
 	Count          int      `json:"count"`
 	Failures       int      `json:"failures"`
 	FailedCommands []string `json:"failed_commands"`
@@ -202,6 +232,7 @@ func renderDigestJSON(w io.Writer, d Digest) error {
 		env.Groups = append(env.Groups, digestGroupWire{
 			Host:           g.Host,
 			CWD:            g.CWD,
+			RepoRoot:       g.RepoRoot,
 			Count:          g.Count,
 			Failures:       g.Failures,
 			FailedCommands: fc,

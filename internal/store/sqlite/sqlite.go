@@ -85,8 +85,8 @@ func (d *DB) Sessions(ctx context.Context) ([]string, error) {
 
 const putSQL = `
 INSERT INTO records
-    (id, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, executor, corr_id, synced)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)
+    (id, command, cwd, hostname, session, shell, username, exit_code, start_time, duration_ms, created_at, deleted, executor, corr_id, repo_root, branch, synced)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)
 ON CONFLICT(id) DO UPDATE SET
     exit_code   = excluded.exit_code,
     duration_ms = excluded.duration_ms,
@@ -120,7 +120,7 @@ func (d *DB) Put(ctx context.Context, recs ...record.Record) error {
 		if _, err := stmt.ExecContext(ctx,
 			r.ID, r.Command, r.CWD, r.Hostname, r.Session, r.Shell, r.Username,
 			r.ExitCode, r.StartTime.UnixMilli(), r.DurationMS, r.CreatedAt.UnixMilli(),
-			boolToInt(r.Deleted), r.Executor, r.CorrID,
+			boolToInt(r.Deleted), r.Executor, r.CorrID, r.RepoRoot, r.Branch,
 		); err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (d *DB) Put(ctx context.Context, recs ...record.Record) error {
 	return tx.Commit()
 }
 
-const selectCols = `r.id, r.command, COALESCE(r.cwd,''), COALESCE(r.hostname,''), COALESCE(r.session,''), COALESCE(r.shell,''), COALESCE(r.username,''), r.exit_code, r.start_time, r.duration_ms, r.created_at, r.deleted, COALESCE(r.executor,''), COALESCE(r.corr_id,'')`
+const selectCols = `r.id, r.command, COALESCE(r.cwd,''), COALESCE(r.hostname,''), COALESCE(r.session,''), COALESCE(r.shell,''), COALESCE(r.username,''), r.exit_code, r.start_time, r.duration_ms, r.created_at, r.deleted, COALESCE(r.executor,''), COALESCE(r.corr_id,''), COALESCE(r.repo_root,''), COALESCE(r.branch,'')`
 
 // filterClause builds the shared `WHERE ...` predicate used by both Search and
 // Count from the non-ordering fields of q. Zero-valued fields are ignored, and
@@ -269,7 +269,7 @@ func scanRecords(rows *sql.Rows) ([]record.Record, error) {
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Command, &r.CWD, &r.Hostname, &r.Session, &r.Shell, &r.Username,
-			&exit, &startMS, &dur, &createdMS, &deleted, &r.Executor, &r.CorrID,
+			&exit, &startMS, &dur, &createdMS, &deleted, &r.Executor, &r.CorrID, &r.RepoRoot, &r.Branch,
 		); err != nil {
 			return nil, err
 		}
@@ -307,7 +307,7 @@ func (d *DB) Unsynced(ctx context.Context, limit int) ([]record.Record, error) {
 		limit = defaultLimit
 	}
 	rows, err := d.db.QueryContext(ctx,
-		`SELECT id, command, COALESCE(cwd,''), COALESCE(hostname,''), COALESCE(session,''), COALESCE(shell,''), COALESCE(username,''), exit_code, start_time, duration_ms, created_at, deleted, COALESCE(executor,''), COALESCE(corr_id,'')
+		`SELECT id, command, COALESCE(cwd,''), COALESCE(hostname,''), COALESCE(session,''), COALESCE(shell,''), COALESCE(username,''), exit_code, start_time, duration_ms, created_at, deleted, COALESCE(executor,''), COALESCE(corr_id,''), COALESCE(repo_root,''), COALESCE(branch,'')
 		 FROM records WHERE synced = 0 ORDER BY start_time ASC, id ASC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -363,6 +363,8 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	for _, c := range []struct{ name, ddl string }{
 		{"executor", `ALTER TABLE records ADD COLUMN executor TEXT`},
 		{"corr_id", `ALTER TABLE records ADD COLUMN corr_id TEXT`},
+		{"repo_root", `ALTER TABLE records ADD COLUMN repo_root TEXT`},
+		{"branch", `ALTER TABLE records ADD COLUMN branch TEXT`},
 	} {
 		if !have[c.name] {
 			if _, err := db.ExecContext(ctx, c.ddl); err != nil {

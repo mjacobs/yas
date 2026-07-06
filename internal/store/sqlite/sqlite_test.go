@@ -70,7 +70,7 @@ func TestPutSearch_RoundTrip(t *testing.T) {
 	want := record.Record{
 		ID:         "019ef273-4ad8-76d8-aaaa-000000000001",
 		Command:    "git status",
-		CWD:        "/home/user/dev",
+		CWD:        "/work/user/dev",
 		Hostname:   "host1",
 		Session:    "sess-1",
 		Shell:      "zsh",
@@ -79,6 +79,8 @@ func TestPutSearch_RoundTrip(t *testing.T) {
 		StartTime:  base,
 		DurationMS: ptr(int64(42)),
 		CreatedAt:  base,
+		RepoRoot:   "/work/user",
+		Branch:     "feature/xvt6",
 	}
 	if err := db.Put(ctx, want); err != nil {
 		t.Fatalf("Put: %v", err)
@@ -94,7 +96,8 @@ func TestPutSearch_RoundTrip(t *testing.T) {
 	g := got[0]
 	if g.ID != want.ID || g.Command != want.Command || g.CWD != want.CWD ||
 		g.Hostname != want.Hostname || g.Session != want.Session ||
-		g.Shell != want.Shell || g.Username != want.Username {
+		g.Shell != want.Shell || g.Username != want.Username ||
+		g.RepoRoot != want.RepoRoot || g.Branch != want.Branch {
 		t.Errorf("string fields mismatch:\n got %+v\nwant %+v", g, want)
 	}
 	if g.ExitCode == nil || *g.ExitCode != 0 {

@@ -32,6 +32,8 @@ type Record struct {
 	Deleted    bool      `json:"deleted,omitempty"`     // tombstone for redaction/deletion
 	Executor   string    `json:"executor,omitempty"`    // who/what ran it: "human" | "claude-code" | "codex" | "ci" | ...
 	CorrID     string    `json:"corr_id,omitempty"`     // cross-tool correlation key (e.g. an agentsview session); reserved, nullable
+	RepoRoot   string    `json:"repo_root,omitempty"`   // git repo root of CWD at capture; derived live, unrecoverable later; empty off-repo/on import
+	Branch     string    `json:"branch,omitempty"`      // git branch at capture; empty on detached HEAD/off-repo/import
 }
 
 // Finished reports whether the command has completed (exit code captured).
@@ -56,7 +58,7 @@ func ContractFields() []string {
 	return []string{
 		"id", "command", "cwd", "hostname", "session", "shell", "username",
 		"exit_code", "start_time", "duration_ms", "created_at", "deleted",
-		"executor", "corr_id",
+		"executor", "corr_id", "repo_root", "branch",
 	}
 }
 
@@ -68,15 +70,15 @@ func ContractFields() []string {
 const MaxCommandBytes = 256 << 10 // 256 KiB
 
 // MaxFieldBytes bounds every other string field (id, cwd, hostname, session,
-// shell, username, executor, corr_id). 4 KiB is Linux PATH_MAX — the largest
-// value any of these can genuinely hold is a cwd, and ids (UUIDv7, 36 bytes;
-// kept a loose byte cap rather than a strict shape so pre-existing imported
-// ids keep validating), hostnames (RFC max 253), session ids, usernames, and
-// executor tokens are far smaller — so no real record ever fails to validate.
-// Together with MaxCommandBytes this bounds a valid record's encoded JSON
-// (worst-case 6x escaping is ~1.5 MiB + 8 x 24 KiB ~ 1.7 MiB), which the sync
-// client relies on: a single valid record always fits under
-// syncproto.MaxPushBodyBytes.
+// shell, username, executor, corr_id, repo_root, branch). 4 KiB is Linux
+// PATH_MAX — the largest value any of these can genuinely hold is a cwd or
+// repo_root (both paths), and ids (UUIDv7, 36 bytes; kept a loose byte cap
+// rather than a strict shape so pre-existing imported ids keep validating),
+// hostnames (RFC max 253), session ids, usernames, executor tokens, and branch
+// names are far smaller — so no real record ever fails to validate. Together
+// with MaxCommandBytes this bounds a valid record's encoded JSON (worst-case 6x
+// escaping is ~1.5 MiB + 10 x 24 KiB ~ 1.75 MiB), which the sync client relies
+// on: a single valid record always fits under syncproto.MaxPushBodyBytes.
 const MaxFieldBytes = 4 << 10 // 4 KiB
 
 // Validate checks the invariants every stored record must satisfy.
@@ -95,6 +97,7 @@ func (r Record) Validate() error {
 		{"id", r.ID}, {"cwd", r.CWD}, {"hostname", r.Hostname},
 		{"session", r.Session}, {"shell", r.Shell}, {"username", r.Username},
 		{"executor", r.Executor}, {"corr_id", r.CorrID},
+		{"repo_root", r.RepoRoot}, {"branch", r.Branch},
 	} {
 		if len(f.v) > MaxFieldBytes {
 			return errors.New("record: " + f.name + " exceeds " + strconv.Itoa(MaxFieldBytes) + " bytes")

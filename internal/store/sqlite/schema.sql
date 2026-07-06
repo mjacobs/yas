@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS records (
     deleted     INTEGER NOT NULL DEFAULT 0, -- tombstone (0/1)
     executor    TEXT,                       -- who/what ran it (NULL/'' = human)
     corr_id     TEXT,                       -- cross-tool correlation key (reserved)
+    repo_root   TEXT,                       -- git repo root of cwd at capture (NULL off-repo/imported)
+    branch      TEXT,                       -- git branch at capture (NULL off-repo/detached/imported)
     synced      INTEGER NOT NULL DEFAULT 0  -- 0 = not yet pushed to server
 );
 

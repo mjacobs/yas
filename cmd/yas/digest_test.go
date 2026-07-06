@@ -69,6 +69,82 @@ func TestBuildDigest_GroupsCountAndSort(t *testing.T) {
 	}
 }
 
+// drecRepo is drec plus a git repo root: it lets the digest group by project
+// (repo root) rather than by exact cwd.
+func drecRepo(host, cwd, repoRoot, cmd string, exit *int, t time.Time) record.Record {
+	r := drec(host, cwd, cmd, exit, t)
+	r.RepoRoot = repoRoot
+	return r
+}
+
+// When records carry a repo root, sibling subdirectories of one repo collapse
+// into a single project group (keyed by repo root), while records without a
+// repo root still group by their exact cwd. This is xvt6's payoff: digest
+// groups by PROJECT, not by noisy deep subdirs.
+func TestBuildDigest_GroupsByRepoRootWhenPresent(t *testing.T) {
+	base := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	since := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC)
+	recs := []record.Record{
+		// Two different cwds under the same repo -> one project group.
+		drecRepo("h", "/repo/a", "/repo/a", "go build", ptr(0), base),
+		drecRepo("h", "/repo/a/internal/deep", "/repo/a", "go test", ptr(1), base.Add(time.Minute)),
+		// A command with no repo root -> grouped by its bare cwd.
+		drec("h", "/loose", "ls", ptr(0), base.Add(2*time.Minute)),
+	}
+
+	d := buildDigest(recs, since, until)
+
+	if len(d.Groups) != 2 {
+		t.Fatalf("want 2 groups (one project, one loose cwd), got %d: %+v", len(d.Groups), d.Groups)
+	}
+	// Sorted by host then location: "/loose" < "/repo/a".
+	loose, project := d.Groups[0], d.Groups[1]
+	if loose.CWD != "/loose" || loose.RepoRoot != "" || loose.Count != 1 {
+		t.Errorf("loose group unexpected: %+v", loose)
+	}
+	if project.CWD != "/repo/a" || project.RepoRoot != "/repo/a" {
+		t.Errorf("project group location: want cwd=/repo/a repo_root=/repo/a, got cwd=%q repo_root=%q", project.CWD, project.RepoRoot)
+	}
+	if project.Count != 2 || project.Failures != 1 {
+		t.Errorf("project group counts: want 2 commands / 1 failure, got %d / %d", project.Count, project.Failures)
+	}
+	if len(project.FailedCommands) != 1 || project.FailedCommands[0] != "go test" {
+		t.Errorf("project group failed commands: want [go test], got %v", project.FailedCommands)
+	}
+}
+
+// A project group (RepoRoot set) and a bare-cwd group whose exact cwd equals
+// that repo root must NOT merge: they are different buckets that happen to share
+// a path string (e.g. an imported record whose cwd was /repo, plus a live record
+// now inside the /repo checkout). Merging them would conflate counts and make
+// the emitted repo_root depend on record processing order.
+func TestBuildDigest_RepoRootAndCwdSamePathDoNotMerge(t *testing.T) {
+	base := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	since := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC)
+	recs := []record.Record{
+		drecRepo("h", "/repo/sub", "/repo", "go build", ptr(0), base), // project group
+		drec("h", "/repo", "ls", ptr(0), base.Add(time.Minute)),       // bare-cwd group
+		drec("h", "/repo", "pwd", ptr(0), base.Add(2*time.Minute)),    // same bare-cwd group
+	}
+
+	d := buildDigest(recs, since, until)
+
+	if len(d.Groups) != 2 {
+		t.Fatalf("want 2 groups (project + bare cwd, not merged), got %d: %+v", len(d.Groups), d.Groups)
+	}
+	// Deterministic order: same host and CWD "/repo", tie broken by RepoRoot
+	// ("" before "/repo"), so the bare-cwd group comes first.
+	cwdGroup, projGroup := d.Groups[0], d.Groups[1]
+	if cwdGroup.RepoRoot != "" || cwdGroup.Count != 2 {
+		t.Errorf("bare-cwd group: want repo_root='' count=2, got repo_root=%q count=%d", cwdGroup.RepoRoot, cwdGroup.Count)
+	}
+	if projGroup.RepoRoot != "/repo" || projGroup.Count != 1 {
+		t.Errorf("project group: want repo_root=/repo count=1, got repo_root=%q count=%d", projGroup.RepoRoot, projGroup.Count)
+	}
+}
+
 func TestBuildDigest_ExitCodeSemantics(t *testing.T) {
 	base := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	since := base.Add(-time.Hour)
