@@ -180,6 +180,11 @@ yas-pause
 _yas_preexec "smoke-secret-paused"; _yas_precmd
 yas-resume
 _yas_preexec "smoke-tracked-two"; _yas_precmd
+export YAS_CORR_ID="smoke-corr-sentinel"
+_yas_preexec "smoke-corr-tagged"; _yas_precmd
+unset YAS_CORR_ID
+unset CLAUDE_CODE_SESSION_ID
+_yas_preexec "smoke-corr-absent"; _yas_precmd
 echo "\$YAS_SESSION" >"$hook_session_file"
 EOF
     PATH="$WORK:$PATH" zsh -f "$hook" >/dev/null 2>&1
@@ -198,6 +203,14 @@ EOF
     fi
     tracked_exec="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-tracked-one") | .executor')"
     assert_eq "hook tags human executor" "$tracked_exec" "human"
+
+    # corr_id seam: YAS_CORR_ID (an explicit override, or the CLAUDE_CODE_SESSION_ID
+    # fallback) rides the hook's --corr-id flag into the record; with neither set,
+    # corr_id stays empty/absent rather than being invented.
+    corr_tagged="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-corr-tagged") | .corr_id')"
+    assert_eq "hook maps YAS_CORR_ID into corr_id" "$corr_tagged" "smoke-corr-sentinel"
+    corr_absent="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-corr-absent") | .corr_id')"
+    assert_eq "hook leaves corr_id empty with no YAS_CORR_ID/CLAUDE_CODE_SESSION_ID" "$corr_absent" "null"
 else
     echo "### zsh hook + pause (skipped: zsh not found)"
 fi

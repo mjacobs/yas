@@ -19,6 +19,13 @@
 # Set YAS_EXECUTOR to self-tag who ran these commands (default "human"); an
 # agent wrapper can export e.g. YAS_EXECUTOR=claude-code so its commands are
 # queryable as agent activity. This is the generic, non-rotting tagging seam.
+#
+# corr_id ties a command to the coding-agent session that ran it, for
+# cross-tool correlation (e.g. joining against agentsview). An explicit
+# YAS_CORR_ID always wins; otherwise CLAUDE_CODE_SESSION_ID is picked up
+# automatically inside a Claude Code session; otherwise it's left empty
+# (empty is fine — corr_id just stays unset). The agent-specific env var
+# mapping lives here in the shell hook only, so yas core stays agent-agnostic.
 
 # EPOCHSECONDS / EPOCHREALTIME come from zsh/datetime; load it so the hook is
 # self-contained even if the interactive config doesn't already.
@@ -46,6 +53,7 @@ _yas_preexec() {
         --cwd "$PWD" \
         --session "$YAS_SESSION" \
         --author "${YAS_EXECUTOR:-human}" \
+        --corr-id "${YAS_CORR_ID:-${CLAUDE_CODE_SESSION_ID:-}}" \
         --shell zsh 2>/dev/null)"
 }
 
