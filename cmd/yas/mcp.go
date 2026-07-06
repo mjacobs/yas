@@ -23,6 +23,7 @@ func cmdMCP(args []string) {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	httpAddr := fs.String("http", "", "serve StreamableHTTP on this address instead of stdio (e.g. 127.0.0.1:8770; bare ports bind loopback)")
 	allowInsecure := fs.Bool("http-allow-insecure", false, "allow --http to bind a non-loopback address (requires a configured token)")
+	excludeCorrID := fs.String("exclude-corr-id", os.Getenv("YAS_CORR_ID"), "corr_id of the querying agent's own session to exclude from results (self-reference guard); defaults to $YAS_CORR_ID")
 	_ = fs.Parse(args)
 
 	st, cfg, closeStore := openStore()
@@ -32,7 +33,7 @@ func cmdMCP(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	opts := mcpserver.ServeOptions{Search: st, Version: version}
+	opts := mcpserver.ServeOptions{Search: st, Version: version, ExcludeCorrID: *excludeCorrID}
 
 	var err error
 	if *httpAddr == "" {

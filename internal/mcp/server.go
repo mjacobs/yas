@@ -25,15 +25,17 @@ const (
 )
 
 // ServeOptions configures the MCP server. Search is required; Version is
-// reported in the server's implementation info; Now is injectable (reserved for
-// a future self-reference window). Token, when non-empty, requires every
-// StreamableHTTP request to carry "Authorization: Bearer <Token>" (no effect on
-// stdio); the command layer sets it for non-loopback binds.
+// reported in the server's implementation info; Now is injectable. ExcludeCorrID
+// is the corr_id of the querying agent's own session to exclude — the
+// self-reference guard the listing/scanning tools apply. Token, when non-empty,
+// requires every StreamableHTTP request to carry "Authorization: Bearer <Token>"
+// (no effect on stdio); the command layer sets it for non-loopback binds.
 type ServeOptions struct {
-	Search  Searcher
-	Version string
-	Now     func() time.Time
-	Token   string
+	Search        Searcher
+	Version       string
+	Now           func() time.Time
+	ExcludeCorrID string
+	Token         string
 }
 
 // newServer builds an MCP server with all read-only command-history tools
@@ -49,7 +51,7 @@ func newServer(opts ServeOptions) *mcp.Server {
 		Version: version,
 	}, nil)
 
-	t := &toolset{search: opts.Search, now: opts.Now}
+	t := &toolset{search: opts.Search, now: opts.Now, excludeCorrID: opts.ExcludeCorrID}
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
 	mcp.AddTool(s, &mcp.Tool{

@@ -138,6 +138,76 @@ func TestCommandStatus_FoundAndNotFound(t *testing.T) {
 	}
 }
 
+// The self-reference guard: a toolset carrying excludeCorrID stamps it on the
+// store.Query for every record-listing/scanning tool, so the querying agent's
+// own in-flight session is filtered out. A by-id command_status lookup is
+// exempt — an explicit id, even the agent's own, must still resolve.
+func TestSelfReferenceGuard_ExcludeCorrID(t *testing.T) {
+	listing := map[string]func(*toolset) error{
+		"search_commands": func(ts *toolset) error {
+			_, _, err := ts.searchCommands(context.Background(), nil, searchCommandsIn{})
+			return err
+		},
+		"recent_commands": func(ts *toolset) error {
+			_, _, err := ts.recentCommands(context.Background(), nil, recentCommandsIn{})
+			return err
+		},
+		"what_failed": func(ts *toolset) error {
+			_, _, err := ts.whatFailed(context.Background(), nil, whatFailedIn{})
+			return err
+		},
+		"failure_summary": func(ts *toolset) error {
+			_, _, err := ts.failureSummary(context.Background(), nil, failureSummaryIn{})
+			return err
+		},
+		"how_did_i_run": func(ts *toolset) error {
+			_, _, err := ts.howDidIRun(context.Background(), nil, howDidIRunIn{Command: "git"})
+			return err
+		},
+	}
+	for name, run := range listing {
+		// With a corr_id set, every listing/scanning tool must stamp it.
+		fs := &fakeSearcher{}
+		ts := &toolset{search: fs, excludeCorrID: "S"}
+		if err := run(ts); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if fs.last.ExcludeCorrID != "S" {
+			t.Errorf("%s must stamp ExcludeCorrID=S, got %q", name, fs.last.ExcludeCorrID)
+		}
+		// With no corr_id set, the query must not filter by corr_id.
+		fs0 := &fakeSearcher{}
+		ts0 := &toolset{search: fs0} // excludeCorrID == ""
+		if err := run(ts0); err != nil {
+			t.Fatalf("%s (unset): %v", name, err)
+		}
+		if fs0.last.ExcludeCorrID != "" {
+			t.Errorf("%s with unset excludeCorrID must not filter, got %q", name, fs0.last.ExcludeCorrID)
+		}
+	}
+
+	// command_status is a point lookup by explicit id: even when the record's own
+	// corr_id equals the guard value, the by-id lookup must resolve and must NOT
+	// stamp ExcludeCorrID.
+	fs := &fakeSearcher{recs: []record.Record{
+		{ID: "own", Command: "ls", CorrID: "S", ExitCode: ptr(0), StartTime: base, CreatedAt: base},
+	}}
+	ts := &toolset{search: fs, excludeCorrID: "S"}
+	_, out, err := ts.commandStatus(context.Background(), nil, commandStatusIn{ID: "own"})
+	if err != nil {
+		t.Fatalf("commandStatus: %v", err)
+	}
+	if fs.last.ExcludeCorrID != "" {
+		t.Errorf("command_status must NOT stamp ExcludeCorrID, got %q", fs.last.ExcludeCorrID)
+	}
+	if fs.last.ID != "own" {
+		t.Errorf("command_status must look up by id, got %+v", fs.last)
+	}
+	if !out.Found || out.Command == nil || out.Command.ID != "own" {
+		t.Errorf("by-id lookup of own record must still resolve: %+v", out)
+	}
+}
+
 func TestRecentCommands_NoTextFilter(t *testing.T) {
 	fs := &fakeSearcher{}
 	ts := &toolset{search: fs}

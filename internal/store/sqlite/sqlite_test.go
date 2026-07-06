@@ -485,6 +485,41 @@ func TestSearch_ExcludeID(t *testing.T) {
 	}
 }
 
+// ExcludeCorrID omits records carrying a given corr_id (the querying agent's own
+// in-flight session) while keeping NULL/empty-corr_id rows, in both Search and
+// Count; an empty ExcludeCorrID filters nothing.
+func TestSearch_ExcludeCorrID(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	seed := []struct{ id, corr string }{
+		{"x1", "X"},
+		{"y1", "Y"},
+		{"n1", ""}, // empty/NULL corr_id — must be kept, not dropped
+	}
+	for i, s := range seed {
+		if err := db.Put(ctx, record.Record{
+			ID: s.id, Command: "cmd", CorrID: s.corr, ExitCode: ptr(0),
+			StartTime: base.Add(time.Duration(i) * time.Minute), CreatedAt: base,
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	got, err := db.Search(ctx, store.Query{ExcludeCorrID: "X"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !sameSet(idsList(got), []string{"y1", "n1"}) {
+		t.Fatalf("ExcludeCorrID=X returned %v, want [y1 n1] (incl. empty-corr_id row)", idsList(got))
+	}
+	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: "X"}); n != 2 {
+		t.Fatalf("Count ExcludeCorrID=X: got %d want 2", n)
+	}
+	// An empty ExcludeCorrID excludes nothing.
+	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: ""}); n != 3 {
+		t.Fatalf("Count ExcludeCorrID='' (no filter): got %d want 3", n)
+	}
+}
+
 // Count returns the number of live (non-tombstoned) records matching a query,
 // the basis for `yas history`'s absolute entry numbers.
 func TestCount(t *testing.T) {

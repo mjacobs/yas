@@ -151,6 +151,12 @@ func filterClause(q store.Query) (string, []any) {
 		sb.WriteString(` AND r.id != ?`)
 		args = append(args, q.ExcludeID)
 	}
+	if q.ExcludeCorrID != "" {
+		// corr_id is nullable — COALESCE keeps NULL/empty rows and drops only
+		// exact matches (the querying agent's own in-flight session).
+		sb.WriteString(` AND COALESCE(r.corr_id,'') != ?`)
+		args = append(args, q.ExcludeCorrID)
+	}
 	if fts := ftsQuery(q.Text); fts != "" {
 		if q.CommandTextOnly {
 			// Scope the FTS5 match to the command column only (records_fts also

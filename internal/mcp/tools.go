@@ -21,14 +21,17 @@ type Searcher interface {
 }
 
 // toolset holds the dependencies shared by every tool handler. now is injectable
-// so a future self-reference window (excluding the querying agent's own recent
-// commands, once those are captured) is testable; it is unused today. scanCap
-// overrides the fold-window size for the rollup/recall verbs (0 -> the scanCap
-// const); it exists so tests can exercise the Truncated boundary cheaply.
+// for testability. excludeCorrID realizes the self-reference guard: when set, the
+// record-listing/scanning tools omit records carrying that corr_id (the querying
+// agent's own in-flight session), so the agent doesn't recall its own commands;
+// the by-id command_status lookup is exempt. scanCap overrides the fold-window
+// size for the rollup/recall verbs (0 -> the scanCap const); it exists so tests
+// can exercise the Truncated boundary cheaply.
 type toolset struct {
-	search  Searcher
-	now     func() time.Time
-	scanCap int
+	search        Searcher
+	now           func() time.Time
+	excludeCorrID string
+	scanCap       int
 }
 
 // scanLimit is the effective fold window for the rollup/recall verbs: the
@@ -40,8 +43,12 @@ func (t *toolset) scanLimit() int {
 	return scanCap
 }
 
-// runQuery executes q and shapes the matching records into commandsOut.
+// runQuery executes q and shapes the matching records into commandsOut. It
+// stamps the self-reference guard (excludeCorrID) so every listing tool routed
+// through it omits the querying agent's own in-flight session; the by-id
+// command_status lookup does not use this path and so is exempt.
 func (t *toolset) runQuery(ctx context.Context, q store.Query) (*mcp.CallToolResult, commandsOut, error) {
+	q.ExcludeCorrID = t.excludeCorrID
 	recs, err := t.search.Search(ctx, q)
 	if err != nil {
 		return nil, commandsOut{}, err
@@ -194,10 +201,11 @@ type failureSummaryOut struct {
 // when the scan hit the cap, so older failures may exist beyond it.
 func (t *toolset) failureSummary(ctx context.Context, _ *mcp.CallToolRequest, in failureSummaryIn) (*mcp.CallToolResult, failureSummaryOut, error) {
 	q := store.Query{
-		Host:       in.Host,
-		CWD:        in.Cwd,
-		FailedOnly: true,
-		Limit:      t.scanLimit(),
+		Host:          in.Host,
+		CWD:           in.Cwd,
+		FailedOnly:    true,
+		ExcludeCorrID: t.excludeCorrID, // self-reference guard
+		Limit:         t.scanLimit(),
 	}
 	var err error
 	if q.Since, err = parseOptTime(in.Since); err != nil {
@@ -304,6 +312,7 @@ func (t *toolset) howDidIRun(ctx context.Context, _ *mcp.CallToolRequest, in how
 		CommandTextOnly: true, // anchor on the program, not cwd paths containing it
 		Host:            in.Host,
 		CWD:             in.Cwd,
+		ExcludeCorrID:   t.excludeCorrID, // self-reference guard
 		Limit:           t.scanLimit(),
 	}
 	recs, err := t.search.Search(ctx, q)

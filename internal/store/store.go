@@ -13,9 +13,10 @@ import (
 // Query expresses a history search. Zero-valued fields are ignored, so an empty
 // Query matches everything (most-recent-first by default).
 type Query struct {
-	ID        string // exact record id (fetch a single record)
-	ExcludeID string // omit this record id (e.g. the in-flight query command itself)
-	Text      string // full-text match against the command (and cwd)
+	ID            string // exact record id (fetch a single record)
+	ExcludeID     string // omit this record id (e.g. the in-flight query command itself)
+	ExcludeCorrID string // omit records with this corr_id (e.g. the querying agent's own in-flight session)
+	Text          string // full-text match against the command (and cwd)
 	// CommandTextOnly scopes a Text match to the command column, excluding cwd.
 	// how_did_i_run sets it so a program name doesn't match records merely
 	// because a directory in their path contains it (which would let cwd noise
