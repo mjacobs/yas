@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1363,6 +1364,105 @@ func TestRecordStart_Executor(t *testing.T) {
 	if len(recs) != 1 || recs[0].Executor != "claude-code" {
 		t.Fatalf("executor not persisted: %+v", recs)
 	}
+}
+
+// TestRecordStart_CorrIDPrecedence drives the real `record start` CLI path
+// (flag parsing + os.Getenv default) end to end: --corr-id and $YAS_CORR_ID
+// both feed record.Record.CorrID, with an explicit flag winning over the env
+// default — the M10 cross-tool correlation seam.
+func TestRecordStart_CorrIDPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		flagVal string // "" = --corr-id omitted
+		envVal  string // "" = YAS_CORR_ID unset
+		want    string
+	}{
+		{"flag only", "flag-x", "", "flag-x"},
+		{"env only", "", "env-y", "env-y"},
+		{"flag wins over env", "flag-x", "env-y", "flag-x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			t.Setenv("YAS_DATA_DIR", dataDir)
+			t.Setenv("YAS_CORR_ID", tc.envVal)
+
+			args := []string{"start", "--command", "echo hi", "--cwd", dataDir, "--session", "s1", "--shell", "zsh"}
+			if tc.flagVal != "" {
+				args = append(args, "--corr-id", tc.flagVal)
+			}
+			id := runRecordStartCLI(t, args)
+
+			recs := searchRecordedID(t, dataDir, id)
+			if recs[0].CorrID != tc.want {
+				t.Errorf("CorrID = %q, want %q", recs[0].CorrID, tc.want)
+			}
+		})
+	}
+}
+
+// TestRecordStart_CorrIDOmittedWhenUnset is the fourth precedence case: with
+// neither --corr-id nor $YAS_CORR_ID set, CorrID stays empty and (per the
+// record package's omitempty contract) corr_id never appears in the record's
+// marshaled JSON — old/unset records simply lack the key.
+func TestRecordStart_CorrIDOmittedWhenUnset(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("YAS_DATA_DIR", dataDir)
+	t.Setenv("YAS_CORR_ID", "")
+
+	id := runRecordStartCLI(t, []string{"start", "--command", "echo hi", "--cwd", dataDir, "--session", "s1", "--shell", "zsh"})
+
+	recs := searchRecordedID(t, dataDir, id)
+	if recs[0].CorrID != "" {
+		t.Fatalf("CorrID = %q, want empty", recs[0].CorrID)
+	}
+	b, err := json.Marshal(recs[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "corr_id") {
+		t.Errorf("corr_id must be omitted when unset: %s", b)
+	}
+}
+
+// searchRecordedID opens the SQLite replica under dataDir (matching
+// config.Client.DBPath's "history.db" layout) and fetches the single record
+// with the given id.
+func searchRecordedID(t *testing.T, dataDir, id string) []record.Record {
+	t.Helper()
+	db, err := sqlitestore.Open(filepath.Join(dataDir, "history.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer db.Close()
+	recs, err := db.Search(context.Background(), store.Query{ID: id})
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("search %q: recs=%v err=%v", id, recs, err)
+	}
+	return recs
+}
+
+// runRecordStartCLI invokes the real `record start` flag parsing + store path
+// via cmdRecord and returns the printed record id. It only exercises the
+// success path (valid flags, a writable temp $YAS_DATA_DIR), so cmdRecord's
+// os.Exit branches are never reached.
+func runRecordStartCLI(t *testing.T, args []string) string {
+	t.Helper()
+	rd, wr, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	origStdout := os.Stdout
+	os.Stdout = wr
+	cmdRecord(args)
+	os.Stdout = origStdout
+	if err := wr.Close(); err != nil {
+		t.Fatalf("close pipe writer: %v", err)
+	}
+	out, err := io.ReadAll(rd)
+	if err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func TestParseSearchArgs_Executor(t *testing.T) {

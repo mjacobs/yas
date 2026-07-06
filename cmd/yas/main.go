@@ -163,6 +163,7 @@ func cmdRecord(args []string) {
 		session := fs.String("session", "", "shell session id")
 		shell := fs.String("shell", "", "shell name (zsh|bash|fish)")
 		author := fs.String("author", "", `who/what ran it; empty = human ("claude-code", "codex", "ci", ...)`)
+		corrID := fs.String("corr-id", os.Getenv("YAS_CORR_ID"), "cross-tool correlation id (e.g. a coding-agent session id); default $YAS_CORR_ID")
 		_ = fs.Parse(args[1:])
 
 		st, cfg, closeStore := openStore()
@@ -181,6 +182,7 @@ func cmdRecord(args []string) {
 			Session:  *session,
 			Shell:    *shell,
 			Executor: *author,
+			CorrID:   *corrID,
 			Hostname: cfg.Hostname,
 			Username: currentUsername(),
 			RepoRoot: repoRoot,

@@ -25,7 +25,7 @@ the contract version and field set at runtime.
 | `created_at` | RFC3339 | When the record was first written. Always present. |
 | `deleted` | bool | Tombstone. Omitted when false. |
 | `executor` | string | Who/what ran it: `human` \| `claude-code` \| `codex` \| `ci` \| ... Empty = human. Omitted when empty. |
-| `corr_id` | string | Cross-tool correlation key (e.g. an agentsview session). Reserved; populated in a later milestone. Omitted when empty. |
+| `corr_id` | string | Cross-tool correlation key (e.g. a coding-agent session id), set at capture time via `record start --corr-id` / `$YAS_CORR_ID`. Omitted when empty (old/unset records simply lack it). |
 | `repo_root` | string | Git repo root of `cwd`, derived at capture time. Empty off-repo and on imported history (unrecoverable after the fact). Omitted when empty. |
 | `branch` | string | Git branch at capture time. Empty on a detached HEAD, off-repo, and on imported history. Omitted when empty. |
 
