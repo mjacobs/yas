@@ -185,6 +185,11 @@ _yas_preexec "smoke-corr-tagged"; _yas_precmd
 unset YAS_CORR_ID
 unset CLAUDE_CODE_SESSION_ID
 _yas_preexec "smoke-corr-absent"; _yas_precmd
+export YAS_CORR_ID=""
+export CLAUDE_CODE_SESSION_ID="smoke-claude-session-sentinel"
+_yas_preexec "smoke-corr-explicit-empty"; _yas_precmd
+unset YAS_CORR_ID
+unset CLAUDE_CODE_SESSION_ID
 echo "\$YAS_SESSION" >"$hook_session_file"
 EOF
     PATH="$WORK:$PATH" zsh -f "$hook" >/dev/null 2>&1
@@ -211,6 +216,11 @@ EOF
     assert_eq "hook maps YAS_CORR_ID into corr_id" "$corr_tagged" "smoke-corr-sentinel"
     corr_absent="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-corr-absent") | .corr_id')"
     assert_eq "hook leaves corr_id empty with no YAS_CORR_ID/CLAUDE_CODE_SESSION_ID" "$corr_absent" "null"
+
+    # An explicitly-empty YAS_CORR_ID must win over CLAUDE_CODE_SESSION_ID
+    # (suppression), not be overridden by it — this is the zsh ${+VAR} fix.
+    corr_explicit_empty="$("$BIN" search --json --session "$hook_session" | jq -r '.records[] | select(.command=="smoke-corr-explicit-empty") | .corr_id')"
+    assert_eq "explicit empty YAS_CORR_ID suppresses CLAUDE_CODE_SESSION_ID fallback" "$corr_explicit_empty" "null"
 else
     echo "### zsh hook + pause (skipped: zsh not found)"
 fi

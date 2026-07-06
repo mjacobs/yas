@@ -21,8 +21,9 @@
 # queryable as agent activity. This is the generic, non-rotting tagging seam.
 #
 # corr_id ties a command to the coding-agent session that ran it, for
-# cross-tool correlation (e.g. joining against agentsview). An explicit
-# YAS_CORR_ID always wins; otherwise CLAUDE_CODE_SESSION_ID is picked up
+# cross-tool correlation (e.g. joining against agentsview). An explicitly-set
+# YAS_CORR_ID always wins — even if set to the empty string, to deliberately
+# suppress correlation; otherwise CLAUDE_CODE_SESSION_ID is picked up
 # automatically inside a Claude Code session; otherwise it's left empty
 # (empty is fine — corr_id just stays unset). The agent-specific env var
 # mapping lives here in the shell hook only, so yas core stays agent-agnostic.
@@ -47,13 +48,23 @@ _yas_preexec() {
     _yas_has || return
     [[ -n "$YAS_PAUSED" ]] && return   # capture paused for this shell
     YAS_START="${EPOCHREALTIME}"
+    # zsh's ${VAR:-x} falls back on empty as well as unset, which would let
+    # CLAUDE_CODE_SESSION_ID override an explicitly-empty YAS_CORR_ID (used to
+    # suppress correlation). Test set-ness with ${+VAR} instead so an
+    # explicitly-set YAS_CORR_ID (even empty) always wins.
+    local _yas_corr
+    if (( ${+YAS_CORR_ID} )); then
+        _yas_corr="$YAS_CORR_ID"
+    else
+        _yas_corr="${CLAUDE_CODE_SESSION_ID:-}"
+    fi
     # `yas record start` prints the new record id on stdout.
     YAS_RECORD_ID="$(yas record start \
         --command "$1" \
         --cwd "$PWD" \
         --session "$YAS_SESSION" \
         --author "${YAS_EXECUTOR:-human}" \
-        --corr-id "${YAS_CORR_ID:-${CLAUDE_CODE_SESSION_ID:-}}" \
+        --corr-id "$_yas_corr" \
         --shell zsh 2>/dev/null)"
 }
 

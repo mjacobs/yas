@@ -63,13 +63,26 @@ you pass `--http-allow-insecure` **and** have a token configured (`token` /
 `YAS_TOKEN`); the server then enforces `Authorization: Bearer <token>` on every
 request. The loopback handler also keeps the SDK's DNS-rebinding protection.
 
+### Self-reference guard
+
+`yas mcp` can exclude the querying agent's own session's commands from
+results via `--exclude-corr-id <id>` (default `$YAS_CORR_ID`).
+
+Because yas core is agent-**agnostic**, it does not read
+`CLAUDE_CODE_SESSION_ID` itself — that mapping lives only in the zsh capture
+hook (`shell/yas.zsh`). So the guard is **inert unless you supply the id**:
+launch with `--exclude-corr-id "$CLAUDE_CODE_SESSION_ID"` (or set
+`YAS_CORR_ID` in the mcp server's environment to the same value the record
+hook uses), so the excluded id agrees with the `corr_id` the hook records.
+With `YAS_CORR_ID` unset, records may carry `corr_id=CLAUDE_CODE_SESSION_ID`
+while the guard excludes nothing — a documented no-op, not a bug.
+
+It is additionally inert until agent-run commands are themselves captured
+with a corr_id (a later milestone) — there is nothing to exclude until then.
+
 ## Notes
 
 - The server is **pull-only**: an agent calls a tool; yas answers. Auto-injected
   "context before the first prompt" resources are a deliberate non-feature for
   now (a privacy/noise surface) — the seam is left open for later, off by
   default.
-- yas does not (yet) record the querying agent's *own* commands, so the
-  "exclude my own in-flight activity" self-reference guard is a no-op today; the
-  reserved `corr_id` field is where it will hook in once agent-command capture
-  lands.

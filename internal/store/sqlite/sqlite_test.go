@@ -489,12 +489,22 @@ func TestSearch_ExcludeID(t *testing.T) {
 // in-flight session) while keeping NULL/empty-corr_id rows, in both Search and
 // Count; an empty ExcludeCorrID filters nothing.
 func TestSearch_ExcludeCorrID(t *testing.T) {
-	db := openTestDB(t)
+	// Opened directly (not via openTestDB) so the test can also reach the file
+	// through a second raw *sql.DB connection, to seed a genuinely NULL corr_id
+	// below — something Put/record.Record can't express (CorrID: "" binds as
+	// the empty string, never SQL NULL).
+	path := filepath.Join(t.TempDir(), "history.db")
+	db, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
 	ctx := context.Background()
 	seed := []struct{ id, corr string }{
 		{"x1", "X"},
 		{"y1", "Y"},
-		{"n1", ""}, // empty/NULL corr_id — must be kept, not dropped
+		{"n1", ""},    // empty-string corr_id (bound as TEXT '') — must be kept, not dropped
+		{"null1", ""}, // placeholder; nulled out below via raw SQL
 	}
 	for i, s := range seed {
 		if err := db.Put(ctx, record.Record{
@@ -504,19 +514,35 @@ func TestSearch_ExcludeCorrID(t *testing.T) {
 			t.Fatalf("seed: %v", err)
 		}
 	}
+	// Give "null1" a genuinely NULL corr_id (as every pre-M10 record has) by
+	// updating it through a second connection to the same file. This is what
+	// actually exercises the COALESCE(r.corr_id,'') in the exclude predicate —
+	// without it, a naive `r.corr_id != ?` would still pass the test above
+	// while silently dropping every NULL-corr_id row.
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := raw.Exec(`UPDATE records SET corr_id = NULL WHERE id = 'null1'`); err != nil {
+		t.Fatalf("null out corr_id: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
 	got, err := db.Search(ctx, store.Query{ExcludeCorrID: "X"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if !sameSet(idsList(got), []string{"y1", "n1"}) {
-		t.Fatalf("ExcludeCorrID=X returned %v, want [y1 n1] (incl. empty-corr_id row)", idsList(got))
+	if !sameSet(idsList(got), []string{"y1", "n1", "null1"}) {
+		t.Fatalf("ExcludeCorrID=X returned %v, want [y1 n1 null1] (incl. empty- and NULL-corr_id rows)", idsList(got))
 	}
-	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: "X"}); n != 2 {
-		t.Fatalf("Count ExcludeCorrID=X: got %d want 2", n)
+	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: "X"}); n != 3 {
+		t.Fatalf("Count ExcludeCorrID=X: got %d want 3", n)
 	}
 	// An empty ExcludeCorrID excludes nothing.
-	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: ""}); n != 3 {
-		t.Fatalf("Count ExcludeCorrID='' (no filter): got %d want 3", n)
+	if n, _ := db.Count(ctx, store.Query{ExcludeCorrID: ""}); n != 4 {
+		t.Fatalf("Count ExcludeCorrID='' (no filter): got %d want 4", n)
 	}
 }
 
