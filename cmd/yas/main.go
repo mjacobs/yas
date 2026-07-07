@@ -277,7 +277,13 @@ func durationField(r record.Record) string {
 	case ms < 1000:
 		return fmt.Sprintf("%dms", ms)
 	case ms < 60_000:
-		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+		tenths := (ms + 50) / 100
+		if tenths >= 600 {
+			// Rounds to 60.0s or more, display as minutes
+			sec := (ms + 500) / 1000 // round to nearest second
+			return fmt.Sprintf("%dm%02ds", sec/60, sec%60)
+		}
+		return fmt.Sprintf("%d.%ds", tenths/10, tenths%10)
 	case ms < 3_600_000:
 		return fmt.Sprintf("%dm%02ds", ms/60_000, (ms%60_000)/1000)
 	default:
