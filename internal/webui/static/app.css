@@ -1,0 +1,47 @@
+/* yas web UI — terminal-native, refined. Dark-first (catppuccin mocha
+   -adjacent); light theme via prefers-color-scheme. Commands render in the
+   mono stack; chrome in the sans stack. */
+:root {
+  --bg: #1e1e2e;        /* mocha base */
+  --surface: #313244;   /* mocha surface0 */
+  --text: #cdd6f4;      /* mocha text */
+  --subtext: #a6adc8;   /* mocha subtext0 */
+  --accent: #89b4fa;    /* mocha blue */
+  --ok: #a6e3a1;        /* mocha green  (exit 0) */
+  --fail: #f38ba8;      /* mocha red    (exit != 0) */
+  --font-mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eff1f5;      /* latte base */
+    --surface: #ccd0da; /* latte surface0 */
+    --text: #4c4f69;    /* latte text */
+    --subtext: #6c6f85; /* latte subtext0 */
+    --accent: #1e66f5;  /* latte blue */
+    --ok: #40a02b;      /* latte green */
+    --fail: #d20f39;    /* latte red */
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 2rem 1.5rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.wordmark {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  margin: 0;
+}
+.wordmark .cat { color: var(--accent); font-size: 1rem; }
+.tagline { color: var(--subtext); margin: 0.25rem 0 0; }
+.empty-state {
+  margin-top: 3rem;
+  color: var(--subtext);
+  font-family: var(--font-mono);
+  text-align: center;
+}
