@@ -140,6 +140,10 @@ yas serve --addr 127.0.0.1:8765 &
 curl -s 'http://127.0.0.1:8765/v1/search?q=git&limit=20' | jq '.records[].command'
 ```
 
+`yas serve` also serves an embedded web UI at `http://127.0.0.1:8765/ui/` (`/`
+redirects there). There's no auth — binding to a non-loopback address exposes
+your full shell history to anyone who can reach it, so keep it on `127.0.0.1`.
+
 The built-in `yas search` is just another client of the same store:
 
 ```bash

@@ -1587,7 +1587,7 @@ usage:
   yas history -c --yes                  delete ALL history (tombstones sync everywhere)
   yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit] [--no-duration]
   yas digest [--since t] [--until t] [--json] [--no-color]   today's commands grouped by host/dir, failures flagged
-  yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API
+  yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API + web UI at /ui/
   yas sync                              push/pull with the central server
   yas import [--from zsh-history|atuin] [--file <path>]   backfill from shell history or atuin
   yas import --prune-live-dupes [--yes]   tombstone import skeletons already captured live (dry run unless --yes)

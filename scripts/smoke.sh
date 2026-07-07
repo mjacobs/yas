@@ -237,6 +237,20 @@ assert_eq "executor=\$all-agent finds the agent command" "$agent_hit" "agent-dep
 ver="$(curl -fsS "http://$ADDR/v1/version" | jq -r .version)"
 assert_eq "/v1/version reports v1" "$ver" "v1"
 
+echo "### web UI at /ui/"
+ui_ct="$(curl -fsS -o /dev/null -w '%{content_type}' "http://$ADDR/ui/")"
+case "$ui_ct" in
+    text/html*) echo "  ok: /ui/ content-type $ui_ct" ;;
+    *) echo "  FAIL: /ui/ content-type $ui_ct" >&2; exit 1 ;;
+esac
+ui_body="$(curl -fsS "http://$ADDR/ui/")"
+if [[ "$ui_body" == *yas* ]]; then
+    echo "  ok: /ui/ contains wordmark"
+else
+    echo "  FAIL: /ui/ missing wordmark" >&2
+    exit 1
+fi
+
 echo "### record repeated failures (failure_summary rollup)"
 # The store was cleared above, so seed a recurring failure for the MCP rollup.
 for _ in 1 2; do
