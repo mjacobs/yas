@@ -226,29 +226,49 @@ func cmdRecord(args []string) {
 	}
 }
 
+// searchOpts carries the search listing's presentation flags.
+type searchOpts struct {
+	asJSON       bool
+	noColor      bool
+	showSession  bool
+	showDuration bool
+}
+
 // doSearch runs q against the store and renders the results to w: as the same
-// JSON envelope the HTTP API serves (asJSON), else a compact human line each.
-// JSON is never styled — it's the UI contract.
-func doSearch(ctx context.Context, s recordStore, q store.Query, w io.Writer, asJSON bool, styles cliStyles, showSession bool) error {
+// JSON envelope the HTTP API serves (opts.asJSON), else a compact human line
+// each. JSON is never styled — it's the UI contract.
+func doSearch(ctx context.Context, s recordStore, q store.Query, w io.Writer, opts searchOpts, styles cliStyles) error {
 	recs, err := s.Search(ctx, q)
 	if err != nil {
 		return err
 	}
-	if asJSON {
+	if opts.asJSON {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(queryapi.SearchResponse{Records: recs})
 	}
 	if styles.color {
-		return renderSearchRich(w, recs, styles, showSession)
+		return renderSearchRich(w, recs, styles, opts)
+	}
+	durWidth := 0
+	if opts.showDuration {
+		for _, r := range recs {
+			if n := len(durationField(r)); n > durWidth {
+				durWidth = n
+			}
+		}
 	}
 	for _, r := range recs {
 		ts := styles.dim.Render(r.StartTime.UTC().Format("2006-01-02 15:04:05Z"))
+		dur := ""
+		if opts.showDuration && durWidth > 0 {
+			dur = fmt.Sprintf("%*s", durWidth, durationField(r)) + "  "
+		}
 		sess := ""
-		if showSession {
+		if opts.showSession {
 			sess = sessCell(r.Session) + "  "
 		}
-		if _, err := fmt.Fprintf(w, "%s  %s  %s%s\n", ts, styles.exit(r), sess, r.Command); err != nil {
+		if _, err := fmt.Fprintf(w, "%s  %s  %s%s%s\n", ts, styles.exit(r), dur, sess, r.Command); err != nil {
 			return err
 		}
 	}
@@ -477,11 +497,11 @@ func renderHistoryRich(w io.Writer, recs []record.Record, startNum int, loc *tim
 // renderSearchRich is the TTY search listing: a title, column headers, then rows
 // of dim UTC timestamp, status glyph, optional SESS token, and command (newest
 // first, as searched).
-func renderSearchRich(w io.Writer, recs []record.Record, styles cliStyles, showSession bool) error {
+func renderSearchRich(w io.Writer, recs []record.Record, styles cliStyles, opts searchOpts) error {
 	if len(recs) == 0 {
 		return nil // no matches -> no chrome, same as the plain path
 	}
-	timeW, glyphW := 0, 0
+	timeW, glyphW, durW := 0, 0, 0
 	for _, r := range recs {
 		if n := lipgloss.Width(r.StartTime.UTC().Format("2006-01-02 15:04:05Z")); n > timeW {
 			timeW = n
@@ -489,9 +509,20 @@ func renderSearchRich(w io.Writer, recs []record.Record, styles cliStyles, showS
 		if n := lipgloss.Width(styles.glyph(r)); n > glyphW {
 			glyphW = n
 		}
+		if opts.showDuration {
+			if n := lipgloss.Width(durationField(r)); n > durW {
+				durW = n
+			}
+		}
 	}
 	headerCols := []string{padTo("WHEN", timeW), padTo("", glyphW)}
-	if showSession {
+	if opts.showDuration && durW > 0 {
+		if n := lipgloss.Width("TOOK"); n > durW {
+			durW = n
+		}
+		headerCols = append(headerCols, padTo("TOOK", durW))
+	}
+	if opts.showSession {
 		headerCols = append(headerCols, padTo("SESS", sessCellWidth))
 	}
 	headerCols = append(headerCols, "COMMAND")
@@ -500,11 +531,15 @@ func renderSearchRich(w io.Writer, recs []record.Record, styles cliStyles, showS
 	}
 	for _, r := range recs {
 		ts := styles.dim.Render(padTo(r.StartTime.UTC().Format("2006-01-02 15:04:05Z"), timeW))
+		dur := ""
+		if opts.showDuration && durW > 0 {
+			dur = styles.dim.Render(fmt.Sprintf("%*s", durW, durationField(r))) + "  "
+		}
 		sess := ""
-		if showSession {
+		if opts.showSession {
 			sess = sessCell(r.Session) + "  "
 		}
-		if _, err := fmt.Fprintf(w, "%s  %s  %s%s\n", ts, padTo(styles.glyph(r), glyphW), sess, r.Command); err != nil {
+		if _, err := fmt.Fprintf(w, "%s  %s  %s%s%s\n", ts, padTo(styles.glyph(r), glyphW), dur, sess, r.Command); err != nil {
 			return err
 		}
 	}
@@ -514,7 +549,7 @@ func renderSearchRich(w io.Writer, recs []record.Record, styles cliStyles, showS
 // cmdSearch implements `yas search [text...] [filters]`, a built-in client of
 // the local store. Free args form the full-text query.
 func cmdSearch(args []string) {
-	q, asJSON, noColor, showSession, err := parseSearchArgs(args)
+	q, opts, err := parseSearchArgs(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "yas search:", err)
 		os.Exit(2)
@@ -524,18 +559,18 @@ func cmdSearch(args []string) {
 	// Don't list the in-flight `yas search` command itself (the zsh hook exports
 	// its record id before this process runs).
 	q.ExcludeID = os.Getenv("YAS_RECORD_ID")
-	styles := newCLIStyles(!noColor && colorTerminal(os.Stdout))
-	if err := doSearch(context.Background(), st, q, os.Stdout, asJSON, styles, showSession); err != nil {
+	styles := newCLIStyles(!opts.noColor && colorTerminal(os.Stdout))
+	if err := doSearch(context.Background(), st, q, os.Stdout, opts, styles); err != nil {
 		fmt.Fprintln(os.Stderr, "yas search:", err)
 		os.Exit(1)
 	}
 }
 
-// parseSearchArgs turns `search` args into a store.Query, the --json flag, the
-// --no-color flag, and the showSession flag (true unless --no-session is passed).
-// Flags may appear before OR after the free-text query (the stdlib flag package
-// stops at the first operand, so we partition ourselves).
-func parseSearchArgs(args []string) (store.Query, bool, bool, bool, error) {
+// parseSearchArgs turns `search` args into a store.Query and the listing's
+// searchOpts (--json, --no-color, --no-session, --no-duration). Flags may
+// appear before OR after the free-text query (the stdlib flag package stops
+// at the first operand, so we partition ourselves).
+func parseSearchArgs(args []string) (store.Query, searchOpts, error) {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "", "filter by hostname")
@@ -552,10 +587,11 @@ func parseSearchArgs(args []string) (store.Query, bool, bool, bool, error) {
 	asJSON := fs.Bool("json", false, "emit JSON (same shape as the HTTP API)")
 	noColor := fs.Bool("no-color", false, "disable colorized output")
 	noSession := fs.Bool("no-session", false, "hide the session token column")
+	noDuration := fs.Bool("no-duration", false, "omit the duration column")
 
 	flags, operands := partitionArgs(fs, args)
 	if err := fs.Parse(flags); err != nil {
-		return store.Query{}, false, false, false, err
+		return store.Query{}, searchOpts{}, err
 	}
 
 	q := store.Query{
@@ -577,12 +613,18 @@ func parseSearchArgs(args []string) (store.Query, bool, bool, bool, error) {
 	q.ApplyExecutorToken(*executor)
 	var err error
 	if q.Since, err = parseOptRFC3339(*since); err != nil {
-		return store.Query{}, false, false, false, fmt.Errorf("invalid --since %q: want RFC3339 (e.g. 2006-01-02T15:04:05Z)", *since)
+		return store.Query{}, searchOpts{}, fmt.Errorf("invalid --since %q: want RFC3339 (e.g. 2006-01-02T15:04:05Z)", *since)
 	}
 	if q.Until, err = parseOptRFC3339(*until); err != nil {
-		return store.Query{}, false, false, false, fmt.Errorf("invalid --until %q: want RFC3339 (e.g. 2006-01-02T15:04:05Z)", *until)
+		return store.Query{}, searchOpts{}, fmt.Errorf("invalid --until %q: want RFC3339 (e.g. 2006-01-02T15:04:05Z)", *until)
 	}
-	return q, *asJSON, *noColor, !*noSession, nil
+	opts := searchOpts{
+		asJSON:       *asJSON,
+		noColor:      *noColor,
+		showSession:  !*noSession,
+		showDuration: !*noDuration,
+	}
+	return q, opts, nil
 }
 
 // partitionArgs splits args into flag tokens (with their values) and operands,
@@ -1538,12 +1580,12 @@ usage:
   yas record start  --command <c> [--cwd <d>] [--session <s>] [--shell <sh>] [--author <who>]
   yas record finish --id <id> --exit <n> [--duration-ms <ms>]
   yas search [text...] [--host h] [--cwd d] [--session s] [--exit n] [--failed] [--executor e]
-              [--since t] [--until t] [--limit n] [--offset n] [--reverse] [--json] [--no-color] [--no-session]
+              [--since t] [--until t] [--limit n] [--offset n] [--reverse] [--json] [--no-color] [--no-session] [--no-duration]
   yas history [n]                       list the last n entries (default 100),
               [--time-format <layout>] [--no-time] [--no-exit] [--no-duration] [--no-session] [--no-color] [--json]   numbered, oldest first
   yas history -d <offset|start-end>     delete an entry/range by its number
   yas history -c --yes                  delete ALL history (tombstones sync everywhere)
-  yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit]
+  yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit] [--no-duration]
   yas digest [--since t] [--until t] [--json] [--no-color]   today's commands grouped by host/dir, failures flagged
   yas serve  [--addr 127.0.0.1:8765]   localhost HTTP+JSON query API
   yas sync                              push/pull with the central server

@@ -319,15 +319,15 @@ func TestParseSearchArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			q, asJSON, _, _, err := parseSearchArgs(c.args)
+			q, opts, err := parseSearchArgs(c.args)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
 			if q.Text != c.wantText {
 				t.Errorf("text: got %q want %q", q.Text, c.wantText)
 			}
-			if asJSON != c.wantJSON {
-				t.Errorf("json: got %v want %v", asJSON, c.wantJSON)
+			if opts.asJSON != c.wantJSON {
+				t.Errorf("json: got %v want %v", opts.asJSON, c.wantJSON)
 			}
 			if c.check != nil {
 				if msg := c.check(q); msg != "" {
@@ -466,7 +466,7 @@ func TestDoSearch_JSON(t *testing.T) {
 	seedTwo(t, db)
 
 	var buf bytes.Buffer
-	if err := doSearch(context.Background(), db, store.Query{}, &buf, true, newCLIStyles(false), true); err != nil {
+	if err := doSearch(context.Background(), db, store.Query{}, &buf, searchOpts{asJSON: true, showSession: true, showDuration: true}, newCLIStyles(false)); err != nil {
 		t.Fatalf("doSearch: %v", err)
 	}
 	var resp queryapi.SearchResponse
@@ -484,7 +484,7 @@ func TestDoSearch_JSONNeverColored(t *testing.T) {
 	db := openTestStore(t)
 	seedTwo(t, db)
 	var buf bytes.Buffer
-	if err := doSearch(context.Background(), db, store.Query{}, &buf, true, newCLIStyles(true), true); err != nil {
+	if err := doSearch(context.Background(), db, store.Query{}, &buf, searchOpts{asJSON: true, showSession: true, showDuration: true}, newCLIStyles(true)); err != nil {
 		t.Fatalf("doSearch: %v", err)
 	}
 	if strings.Contains(buf.String(), "\x1b[") {
@@ -497,7 +497,7 @@ func TestDoSearch_Human(t *testing.T) {
 	seedTwo(t, db)
 
 	var buf bytes.Buffer
-	if err := doSearch(context.Background(), db, store.Query{}, &buf, false, newCLIStyles(false), true); err != nil {
+	if err := doSearch(context.Background(), db, store.Query{}, &buf, searchOpts{asJSON: false, showSession: true, showDuration: true}, newCLIStyles(false)); err != nil {
 		t.Fatalf("doSearch: %v", err)
 	}
 	out := buf.String()
@@ -521,7 +521,7 @@ func TestDoSearch_Colored(t *testing.T) {
 	seedTwo(t, db) // exit 0 ("git status") and exit 2 ("ls")
 
 	var buf bytes.Buffer
-	if err := doSearch(context.Background(), db, store.Query{}, &buf, false, newCLIStyles(true), true); err != nil {
+	if err := doSearch(context.Background(), db, store.Query{}, &buf, searchOpts{asJSON: false, showSession: true, showDuration: true}, newCLIStyles(true)); err != nil {
 		t.Fatalf("doSearch: %v", err)
 	}
 	out := buf.String()
@@ -666,7 +666,7 @@ func TestRenderSearchRich(t *testing.T) {
 		{Command: "false", ExitCode: ptr(1), StartTime: histBase},
 	}
 	var buf bytes.Buffer
-	if err := renderSearchRich(&buf, recs, newCLIStyles(true), true); err != nil {
+	if err := renderSearchRich(&buf, recs, newCLIStyles(true), searchOpts{showSession: true, showDuration: true}); err != nil {
 		t.Fatalf("renderSearchRich: %v", err)
 	}
 	if !strings.Contains(buf.String(), "\x1b[") {
@@ -689,7 +689,7 @@ func TestRenderSearchRich(t *testing.T) {
 
 	// no matches -> nothing printed (no title/header chrome), like the plain path
 	var empty bytes.Buffer
-	if err := renderSearchRich(&empty, nil, newCLIStyles(true), true); err != nil {
+	if err := renderSearchRich(&empty, nil, newCLIStyles(true), searchOpts{showSession: true, showDuration: true}); err != nil {
 		t.Fatalf("renderSearchRich empty: %v", err)
 	}
 	if empty.Len() != 0 {
@@ -1341,7 +1341,7 @@ func TestDoSearch_ExcludesSelf(t *testing.T) {
 	db := openTestStore(t)
 	seedTwo(t, db) // id "a" = "git status", id "b" = "ls"
 	var buf bytes.Buffer
-	if err := doSearch(context.Background(), db, store.Query{ExcludeID: "a"}, &buf, false, newCLIStyles(false), true); err != nil {
+	if err := doSearch(context.Background(), db, store.Query{ExcludeID: "a"}, &buf, searchOpts{asJSON: false, showSession: true, showDuration: true}, newCLIStyles(false)); err != nil {
 		t.Fatalf("doSearch: %v", err)
 	}
 	out := buf.String()
@@ -1475,7 +1475,7 @@ func TestParseSearchArgs_Executor(t *testing.T) {
 		{"human", func(q store.Query) bool { return q.HumansOnly && !q.AgentsOnly && q.Executor == "" }},
 		{"codex", func(q store.Query) bool { return q.Executor == "codex" && !q.AgentsOnly && !q.HumansOnly }},
 	} {
-		q, _, _, _, err := parseSearchArgs([]string{"--executor", c.arg})
+		q, _, err := parseSearchArgs([]string{"--executor", c.arg})
 		if err != nil {
 			t.Fatalf("parse %q: %v", c.arg, err)
 		}
@@ -1517,7 +1517,7 @@ func TestRenderHistory_SessionColumn(t *testing.T) {
 
 // --no-session is parsed for both search and history.
 func TestParseArgs_NoSession(t *testing.T) {
-	if _, _, _, _, err := parseSearchArgs([]string{"--no-session", "foo"}); err != nil {
+	if _, _, err := parseSearchArgs([]string{"--no-session", "foo"}); err != nil {
 		t.Fatalf("search --no-session: %v", err)
 	}
 	o, err := parseHistoryArgs([]string{"--no-session"})
@@ -1659,6 +1659,27 @@ func TestHistoryDurationColumn(t *testing.T) {
 		}
 		if strings.Contains(b.String(), "2.1s") {
 			t.Fatalf("expected no duration column:\n%s", b.String())
+		}
+	})
+}
+
+func TestSearchDurationColumn(t *testing.T) {
+	t.Run("--no-duration parses", func(t *testing.T) {
+		_, opts, err := parseSearchArgs([]string{"--no-duration", "git"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts.showDuration {
+			t.Fatal("expected showDuration=false with --no-duration")
+		}
+	})
+	t.Run("default shows duration", func(t *testing.T) {
+		_, opts, err := parseSearchArgs([]string{"git"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !opts.showDuration {
+			t.Fatal("expected showDuration=true by default")
 		}
 	})
 }

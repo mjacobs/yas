@@ -105,6 +105,27 @@ func TestParseSessionArgs_TooManyArgsIsError(t *testing.T) {
 	}
 }
 
+func TestParseSessionArgs_DurationColumn(t *testing.T) {
+	t.Run("--no-duration parses", func(t *testing.T) {
+		_, opts, err := parseSessionArgs([]string{"--no-duration", "tok"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts.showDuration {
+			t.Fatal("expected showDuration=false with --no-duration")
+		}
+	})
+	t.Run("default shows duration", func(t *testing.T) {
+		_, opts, err := parseSessionArgs([]string{"tok"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !opts.showDuration {
+			t.Fatal("expected showDuration=true by default")
+		}
+	})
+}
+
 // fakeSessionStore is a minimal sessionStore that lets tests control what
 // Sessions() returns while treating every Search as "not a full id".
 type fakeSessionStore struct {

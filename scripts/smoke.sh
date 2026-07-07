@@ -92,9 +92,11 @@ assert_eq "history lists all 5" "$hist_count" "5"
 # reader close the pipe early, which SIGPIPEs yas and trips `set -o pipefail`;
 # reading from a captured string (here-string) avoids that.
 # --no-session keeps these result/ordering checks focused on the columns they
-# assert; the SESS token column gets its own coverage below.
-hist_full="$("$BIN" history --no-time --no-session)"
-hist_bare="$("$BIN" history --no-time --no-exit --no-session)"
+# assert; the SESS token column gets its own coverage below. --no-duration
+# drops the humanized runtime column, which is inherently nondeterministic and
+# would break these exact-match checks.
+hist_full="$("$BIN" history --no-time --no-session --no-duration)"
+hist_bare="$("$BIN" history --no-time --no-exit --no-session --no-duration)"
 
 # The default listing surfaces each command's result; the failing one shows [1].
 if grep -q '\[1\]  false' <<<"$hist_full"; then
@@ -114,7 +116,7 @@ assert_eq "--no-exit drops the result column" "$bare_first" "1  git status"
 
 # The SESS token column shows a 7-char per-shell token by default (between the
 # result and the command) and --no-session hides it.
-if grep -Eq '\[1\]  [0-9a-z]{7}  false' <<<"$("$BIN" history --no-time)"; then
+if grep -Eq '\[1\]  [0-9a-z]{7}  false' <<<"$("$BIN" history --no-time --no-duration)"; then
     echo "  ok: SESS token column shown by default"
 else
     echo "  FAIL: SESS token column missing from default history" >&2

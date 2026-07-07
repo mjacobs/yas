@@ -107,14 +107,15 @@ func doSession(ctx context.Context, st sessionStore, arg string, opts historyOpt
 }
 
 // parseSessionArgs parses `yas session` arguments: flags mirroring
-// parseHistoryArgs (--json, --no-color, --time-format, --no-time, --no-exit)
-// plus exactly one positional token or full session id.
+// parseHistoryArgs (--json, --no-color, --time-format, --no-time, --no-exit,
+// --no-duration) plus exactly one positional token or full session id.
 func parseSessionArgs(args []string) (arg string, opts historyOpts, err error) {
 	fs := flag.NewFlagSet("session", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	layout := fs.String("time-format", defaultHistTimeLayout, "Go time layout for the timestamp column")
 	noTime := fs.Bool("no-time", false, "omit the timestamp column")
 	noExit := fs.Bool("no-exit", false, "omit the exit-code (result) column")
+	noDuration := fs.Bool("no-duration", false, "omit the duration (TOOK) column")
 	noColor := fs.Bool("no-color", false, "disable colorized output")
 	asJSON := fs.Bool("json", false, "emit JSON (same envelope as the query API)")
 
@@ -135,12 +136,13 @@ func parseSessionArgs(args []string) (arg string, opts historyOpts, err error) {
 	}
 
 	opts = historyOpts{
-		layout:      *layout,
-		showTime:    !*noTime,
-		showExit:    !*noExit,
-		showSession: false, // single-session view never needs the token column
-		color:       !*noColor,
-		asJSON:      *asJSON,
+		layout:       *layout,
+		showTime:     !*noTime,
+		showExit:     !*noExit,
+		showDuration: !*noDuration,
+		showSession:  false, // single-session view never needs the token column
+		color:        !*noColor,
+		asJSON:       *asJSON,
 	}
 	return operands[0], opts, nil
 }
