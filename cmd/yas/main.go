@@ -405,7 +405,7 @@ func renderHistoryRich(w io.Writer, recs []record.Record, startNum int, loc *tim
 		return nil // empty history prints nothing, same as the plain path
 	}
 	const numW = 5
-	timeW, glyphW := 0, 0
+	timeW, glyphW, durW := 0, 0, 0
 	for _, r := range recs {
 		if opts.showTime {
 			if n := lipgloss.Width(r.StartTime.In(loc).Format(opts.layout)); n > timeW {
@@ -417,6 +417,11 @@ func renderHistoryRich(w io.Writer, recs []record.Record, startNum int, loc *tim
 				glyphW = n
 			}
 		}
+		if opts.showDuration {
+			if n := lipgloss.Width(durationField(r)); n > durW {
+				durW = n
+			}
+		}
 	}
 
 	cols := []string{fmt.Sprintf("%*s", numW, "#")} // right-aligned to match the numbers
@@ -425,6 +430,12 @@ func renderHistoryRich(w io.Writer, recs []record.Record, startNum int, loc *tim
 	}
 	if opts.showExit {
 		cols = append(cols, padTo("", glyphW))
+	}
+	if opts.showDuration && durW > 0 {
+		if n := lipgloss.Width("TOOK"); n > durW {
+			durW = n
+		}
+		cols = append(cols, padTo("TOOK", durW))
 	}
 	if opts.showSession {
 		cols = append(cols, padTo("SESS", sessCellWidth))
@@ -444,6 +455,10 @@ func renderHistoryRich(w io.Writer, recs []record.Record, startNum int, loc *tim
 		if opts.showExit {
 			b.WriteString("  ")
 			b.WriteString(padTo(styles.glyph(r), glyphW))
+		}
+		if opts.showDuration && durW > 0 {
+			b.WriteString("  ")
+			b.WriteString(styles.dim.Render(fmt.Sprintf("%*s", durW, durationField(r))))
 		}
 		if opts.showSession {
 			b.WriteString("  ")
@@ -634,17 +649,18 @@ const (
 
 // historyOpts is the parsed form of `yas history` arguments.
 type historyOpts struct {
-	mode        historyMode
-	n           int    // list: number of most-recent entries (0 = default)
-	delSpec     string // delete: offset or start-end
-	layout      string // list: timestamp layout
-	showTime    bool   // list: include the timestamp column
-	showExit    bool   // list: include the exit-code (result) column
-	showSession bool   // list: include the SESS token column (default true from parse)
-	color       bool   // list: colorize the output (gated by --no-color + TTY)
-	asJSON      bool   // list: emit the query-API JSON envelope
-	yes         bool   // clear: confirmation guard
-	excludeID   string // omit this record (the in-flight `yas history` command itself)
+	mode         historyMode
+	n            int    // list: number of most-recent entries (0 = default)
+	delSpec      string // delete: offset or start-end
+	layout       string // list: timestamp layout
+	showTime     bool   // list: include the timestamp column
+	showExit     bool   // list: include the exit-code (result) column
+	showSession  bool   // list: include the SESS token column (default true from parse)
+	showDuration bool   // list: include the humanized duration (TOOK) column
+	color        bool   // list: colorize the output (gated by --no-color + TTY)
+	asJSON       bool   // list: emit the query-API JSON envelope
+	yes          bool   // clear: confirmation guard
+	excludeID    string // omit this record (the in-flight `yas history` command itself)
 }
 
 // historyStore is the slice of the local store `yas history` needs: read the
@@ -668,6 +684,7 @@ func parseHistoryArgs(args []string) (historyOpts, error) {
 	noTime := fs.Bool("no-time", false, "omit the timestamp column")
 	noExit := fs.Bool("no-exit", false, "omit the exit-code (result) column")
 	noSession := fs.Bool("no-session", false, "hide the session token column")
+	noDuration := fs.Bool("no-duration", false, "omit the duration (TOOK) column")
 	noColor := fs.Bool("no-color", false, "disable colorized output")
 	asJSON := fs.Bool("json", false, "emit JSON (same envelope as the query API)")
 
@@ -677,14 +694,15 @@ func parseHistoryArgs(args []string) (historyOpts, error) {
 	}
 
 	opts := historyOpts{
-		layout:      *layout,
-		showTime:    !*noTime,
-		showExit:    !*noExit,
-		showSession: !*noSession,
-		color:       !*noColor, // refined against the TTY/NO_COLOR in cmdHistory
-		asJSON:      *asJSON,
-		yes:         *yes,
-		delSpec:     *del,
+		layout:       *layout,
+		showTime:     !*noTime,
+		showExit:     !*noExit,
+		showSession:  !*noSession,
+		showDuration: !*noDuration,
+		color:        !*noColor, // refined against the TTY/NO_COLOR in cmdHistory
+		asJSON:       *asJSON,
+		yes:          *yes,
+		delSpec:      *del,
 	}
 
 	delSet := *del != ""
@@ -811,6 +829,14 @@ func renderHistory(w io.Writer, recs []record.Record, startNum int, loc *time.Lo
 			}
 		}
 	}
+	durWidth := 0
+	if opts.showDuration {
+		for _, r := range recs {
+			if n := len(durationField(r)); n > durWidth {
+				durWidth = n
+			}
+		}
+	}
 	for i, r := range recs {
 		var b strings.Builder
 		b.WriteString(styles.dim.Render(fmt.Sprintf("%5d", startNum+i)))
@@ -823,6 +849,10 @@ func renderHistory(w io.Writer, recs []record.Record, startNum int, loc *time.Lo
 			b.WriteString("  ")
 			b.WriteString(styles.exit(r))
 			b.WriteString(strings.Repeat(" ", pad))
+		}
+		if opts.showDuration && durWidth > 0 {
+			b.WriteString("  ")
+			b.WriteString(styles.dim.Render(fmt.Sprintf("%*s", durWidth, durationField(r))))
 		}
 		if opts.showSession {
 			b.WriteString("  ")
@@ -1510,7 +1540,7 @@ usage:
   yas search [text...] [--host h] [--cwd d] [--session s] [--exit n] [--failed] [--executor e]
               [--since t] [--until t] [--limit n] [--offset n] [--reverse] [--json] [--no-color] [--no-session]
   yas history [n]                       list the last n entries (default 100),
-              [--time-format <layout>] [--no-time] [--no-exit] [--no-session] [--no-color] [--json]   numbered, oldest first
+              [--time-format <layout>] [--no-time] [--no-exit] [--no-duration] [--no-session] [--no-color] [--json]   numbered, oldest first
   yas history -d <offset|start-end>     delete an entry/range by its number
   yas history -c --yes                  delete ALL history (tombstones sync everywhere)
   yas session <token|session-id> [--json] [--no-color] [--time-format <layout>] [--no-time] [--no-exit]

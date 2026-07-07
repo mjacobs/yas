@@ -1611,3 +1611,54 @@ func TestDurationField(t *testing.T) {
 		})
 	}
 }
+
+func TestHistoryDurationColumn(t *testing.T) {
+	ms := func(n int64) *int64 { return &n }
+	exit0 := 0
+	recs := []record.Record{
+		{Command: "sleep 2", StartTime: time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC),
+			ExitCode: &exit0, DurationMS: ms(2100), Session: "abc123def456"},
+		{Command: "true", StartTime: time.Date(2026, 7, 7, 10, 0, 5, 0, time.UTC),
+			ExitCode: &exit0, DurationMS: nil, Session: "abc123def456"},
+	}
+	styles := newCLIStyles(false)
+
+	t.Run("shown by default, blank when nil", func(t *testing.T) {
+		var b strings.Builder
+		opts := historyOpts{layout: defaultHistTimeLayout, showTime: true,
+			showExit: true, showSession: true, showDuration: true}
+		if err := renderHistory(&b, recs, 1, time.UTC, opts, styles); err != nil {
+			t.Fatal(err)
+		}
+		out := b.String()
+		if !strings.Contains(out, "2.1s") {
+			t.Fatalf("expected duration 2.1s in output:\n%s", out)
+		}
+		// The nil-duration row still aligns: the command column follows padding.
+		if !strings.Contains(out, "true") {
+			t.Fatalf("expected nil-duration row rendered:\n%s", out)
+		}
+	})
+
+	t.Run("--no-duration parses", func(t *testing.T) {
+		opts, err := parseHistoryArgs([]string{"--no-duration"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts.showDuration {
+			t.Fatal("expected showDuration=false with --no-duration")
+		}
+	})
+
+	t.Run("omitted when disabled", func(t *testing.T) {
+		var b strings.Builder
+		opts := historyOpts{layout: defaultHistTimeLayout, showTime: true,
+			showExit: true, showSession: true, showDuration: false}
+		if err := renderHistory(&b, recs, 1, time.UTC, opts, styles); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(b.String(), "2.1s") {
+			t.Fatalf("expected no duration column:\n%s", b.String())
+		}
+	})
+}
