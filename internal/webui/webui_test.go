@@ -48,3 +48,15 @@ func TestHandlerUnknownPathIs404(t *testing.T) {
 		t.Fatalf("GET /ui/nope.js = %d, want 404", res.StatusCode)
 	}
 }
+
+// Pins the MIME behavior for extensions beyond .html/.css and pre-creates
+// the file the next slice (kata#stg4) will fill in.
+func TestHandlerServesJS(t *testing.T) {
+	res := get(t, Handler(), "/ui/app.js")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ui/app.js = %d, want 200", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("Content-Type = %q, want it to contain javascript", ct)
+	}
+}

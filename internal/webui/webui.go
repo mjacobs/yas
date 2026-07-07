@@ -16,33 +16,31 @@ var staticFS embed.FS
 
 // Handler serves the embedded UI. Mount it under /ui/ — the handler strips
 // that prefix itself.
+//
+// Serving is delegated to http.FileServer, which gives us the MIME type
+// table (correct Content-Type for any future asset extension, not just
+// .html/.css), Range requests, and conditional-GET for free. The one wrinkle:
+// http.FileServer 301-redirects any request whose path ends in "/index.html"
+// to its directory form ("./"), which would break direct requests for
+// /ui/index.html. The shim below rewrites the path to its directory form
+// itself before handing off to FileServer, pre-empting that redirect.
 func Handler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		panic("webui: embedded static tree missing: " + err.Error()) // unreachable: compiled in
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/ui/") {
-			http.NotFound(w, r)
-			return
+	fileServer := http.FileServer(http.FS(sub))
+	return http.StripPrefix("/ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// http.StripPrefix leaves r.URL.Path without a leading slash (e.g.
+		// "index.html", "app.css", "" for "/ui/"), but http.FileServer
+		// expects one.
+		path := "/" + r.URL.Path
+		if path == "/index.html" {
+			path = "/"
+		} else if strings.HasSuffix(path, "/index.html") {
+			path = strings.TrimSuffix(path, "index.html")
 		}
-		path := strings.TrimPrefix(r.URL.Path, "/ui")
-		if path == "" || path == "/" {
-			path = "/index.html"
-		}
-		path = strings.TrimPrefix(path, "/")
-		data, err := fs.ReadFile(sub, path)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		contentType := "application/octet-stream"
-		if strings.HasSuffix(path, ".html") {
-			contentType = "text/html; charset=utf-8"
-		} else if strings.HasSuffix(path, ".css") {
-			contentType = "text/css; charset=utf-8"
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Write(data)
-	})
+		r.URL.Path = path
+		fileServer.ServeHTTP(w, r)
+	}))
 }
