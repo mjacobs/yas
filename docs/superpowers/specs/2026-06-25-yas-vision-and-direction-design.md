@@ -134,11 +134,11 @@ fumbles — ships in the same move.
   in core; no SaaS; and — the key nuance — **the core never seizes your keys or
   screen.**
 - **A face is allowed, strictly as a client.** A dashboard or even a TUI is fair
-  game *as a client over the contract*. A "hi"-style **web dashboard** over a
+  game *as a client over the contract*. A fleet-wide **web dashboard** over a
   future *global* query API (the existing stretch goal) is explicitly in-bounds —
-  a detachable client, never a terminal takeover. (Reference: an internal Google
-  tool, "hi", that piped history to common infra and exposed a good web view; the
-  lesson is *central infra + a good web view*, not a per-terminal widget.)
+  a detachable client, never a terminal takeover. (The lesson from the best
+  fleet-history tools: *central infra + a good web view*, not a per-terminal
+  widget.)
 - **Agent commands are first-class, not hidden.** Where atuin hides agent rows in
   its UI by default, yas makes `executor` a queryable field; **clients choose** to
   filter (`/v1/search?executor=$all-human`), the substrate never decides for them.
@@ -251,7 +251,7 @@ and are not renumbered here.
 3. **`yas-mcp`.** The agent-seam demo, same contract.
 4. **Agentsview seam → mesh.** When a shared session-identity contract is ready,
    light up `prompt → session → command → exit` joins; then the one synthesis
-   consumer (above) and, optionally, the "hi"-style global web dashboard over a
+   consumer (above) and, optionally, the fleet-wide global web dashboard over a
    global query API.
 
 ## Open / deferred decisions (not blocking the vision)
