@@ -264,6 +264,27 @@ func exitField(r record.Record) string {
 	return strconv.Itoa(*r.ExitCode)
 }
 
+// durationField renders a record's wall-clock runtime for the human listings:
+// humanized ("85ms", "1.2s", "3m40s", "1h02m"), or "" when no duration was
+// captured (still running, or an imported entry). JSON output is untouched —
+// duration_ms is already in the contract.
+func durationField(r record.Record) string {
+	if r.DurationMS == nil {
+		return ""
+	}
+	ms := *r.DurationMS
+	switch {
+	case ms < 1000:
+		return fmt.Sprintf("%dms", ms)
+	case ms < 60_000:
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	case ms < 3_600_000:
+		return fmt.Sprintf("%dm%02ds", ms/60_000, (ms%60_000)/1000)
+	default:
+		return fmt.Sprintf("%dh%02dm", ms/3_600_000, (ms%3_600_000)/60_000)
+	}
+}
+
 // sessCellWidth is the fixed visible width of the SESS token column.
 const sessCellWidth = 7
 

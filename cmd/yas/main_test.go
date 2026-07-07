@@ -1584,3 +1584,29 @@ func TestRoute(t *testing.T) {
 		})
 	}
 }
+
+func TestDurationField(t *testing.T) {
+	ms := func(n int64) *int64 { return &n }
+	cases := []struct {
+		name string
+		in   *int64
+		want string
+	}{
+		{"nil (unfinished or imported)", nil, ""},
+		{"zero", ms(0), "0ms"},
+		{"millis", ms(85), "85ms"},
+		{"seconds one decimal", ms(1234), "1.2s"},
+		{"just under a minute", ms(59949), "59.9s"},
+		{"minutes", ms(220000), "3m40s"},
+		{"minutes pads seconds", ms(180000), "3m00s"},
+		{"hours", ms(3720000), "1h02m"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := durationField(record.Record{DurationMS: tc.in})
+			if got != tc.want {
+				t.Fatalf("durationField(%v) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
