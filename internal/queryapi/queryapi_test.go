@@ -14,8 +14,29 @@ import (
 
 	"github.com/mjacobs/yas/internal/queryapi"
 	"github.com/mjacobs/yas/internal/record"
+	"github.com/mjacobs/yas/internal/store"
 	sqlitestore "github.com/mjacobs/yas/internal/store/sqlite"
 )
+
+// emptySearcher is a stub Searcher for tests that don't exercise /v1/search
+// behavior (e.g. the /ui mount and redirect wiring) and so don't need a real
+// store.
+type emptySearcher struct{}
+
+func (emptySearcher) Search(context.Context, store.Query) ([]record.Record, error) {
+	return []record.Record{}, nil
+}
+
+// doGet drives h directly via httptest.NewRecorder (matching internal/webui's
+// test helper style) rather than a real listener, so redirect responses are
+// observed as-is instead of being followed by an http.Client.
+func doGet(t *testing.T, h http.Handler, path string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr.Result()
+}
 
 var base = time.UnixMilli(1_700_000_000_000)
 
@@ -248,5 +269,27 @@ func TestVersion(t *testing.T) {
 	}
 	if want := record.ContractFields(); !reflect.DeepEqual(out.RecordFields, want) {
 		t.Errorf("record_fields: got %v want %v", out.RecordFields, want)
+	}
+}
+
+func TestUIMountedAndRootRedirects(t *testing.T) {
+	h := queryapi.NewHandler(emptySearcher{})
+
+	res := doGet(t, h, "/ui/")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ui/ = %d, want 200", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("GET /ui/ Content-Type = %q, want text/html", ct)
+	}
+
+	for _, path := range []string{"/", "/ui"} {
+		res := doGet(t, h, path)
+		if res.StatusCode != http.StatusMovedPermanently {
+			t.Fatalf("GET %s = %d, want 301", path, res.StatusCode)
+		}
+		if loc := res.Header.Get("Location"); loc != "/ui/" {
+			t.Fatalf("GET %s Location = %q, want /ui/", path, loc)
+		}
 	}
 }

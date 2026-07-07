@@ -14,6 +14,7 @@ import (
 
 	"github.com/mjacobs/yas/internal/record"
 	"github.com/mjacobs/yas/internal/store"
+	"github.com/mjacobs/yas/internal/webui"
 )
 
 // ContractVersion identifies the stable query-API / record-JSON contract. It is
@@ -47,6 +48,16 @@ func NewHandler(s Searcher) http.Handler {
 	})
 	mux.HandleFunc("GET /v1/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	// The embedded web UI is a client of this same /v1 contract, served on the
+	// same listener for zero-config dogfooding. GET /{$} matches the bare root
+	// only (Go 1.22 pattern), so /v1/* routing is unaffected.
+	mux.Handle("GET /ui/", webui.Handler())
+	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
 	})
 	return mux
 }
