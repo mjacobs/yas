@@ -69,8 +69,11 @@ browser ◄── HTML/CSS/JS (vanilla) ◄────────────�
   both ride the existing `GET /v1/search` (session detail is `?session=<id>`;
   `duration_ms` is already in record JSON). The only gap: the CLI's `--failed`
   filter (`store.Query.FailedOnly`) is not exposed over HTTP, so `/v1/search`
-  gains a `failed=true` boolean param — additive, no version bump. No other
-  endpoint or contract changes.
+  gains a `failed` boolean param — additive, no version bump. Contract:
+  parsed with `strconv.ParseBool` (like `reverse`), malformed values → 400;
+  absent or `failed=false` means no filter; combinable with `exit=` (both
+  predicates AND, matching `store.Query` semantics). No other endpoint or
+  contract changes.
 
 ## The pages
 
@@ -86,7 +89,12 @@ tokens parsed client-side into `/v1/search` params:
 | `failed` | `failed=true` (new additive param, see above) |
 | `executor:$all-human` / `executor:claude` | `executor=...` |
 | `session:<id>` | `session=<id>` |
-| `before:2026-07-01` / `after:2026-06-01` | `until=` / `since=` |
+| `before:2026-07-01` / `after:2026-06-01` | `until=` / `since=` (normalized, see below) |
+
+The API requires RFC3339 for `since`/`until`, so the parser normalizes
+date-only token values to UTC day boundaries (`after:2026-06-01` →
+`since=2026-06-01T00:00:00Z`; `before:2026-07-01` →
+`until=2026-07-01T00:00:00Z`); full RFC3339 values pass through untouched.
 
 Results render as a chronological timeline: command (monospace), host, cwd,
 exit badge, duration, relative time. Infinite scroll via `limit`/`offset`.
@@ -95,7 +103,9 @@ shareable, bookmarkable link.
 
 **Session detail.** Clicking a record's session id navigates to
 `/ui/?session=<id>` — the same timeline filtered to that session, ordered
-oldest-first: the web render of `yas session`. Deep-linkable.
+oldest-first: the UI passes `reverse=true` on this view (ordering must come
+from the API, not client-side reshuffling, or infinite-scroll pagination
+breaks). Equivalent to `yas search --session <id> --reverse`. Deep-linkable.
 
 **Record detail.** Clicking a command expands it inline to show the full
 record fields (id, session, executor, corr_id, duration, exact timestamps).
@@ -137,8 +147,15 @@ assets.
 - **Go (`httptest`):** `/ui/` serves index.html with the right content types;
   `/` redirects; `/v1/*` behavior unchanged.
 - **Token parser:** the one real unit of JS logic lives in a single pure ES
-  module; a shared spec table (query string → expected `/v1/search` params)
-  is golden-tested from Go so the repo stays Node-free.
+  module. The grammar's source of truth is a shared vector file
+  (`testdata/token-vectors.json`: query string → expected `/v1/search`
+  params). Two consumers: (a) a Go test validates every vector's expected
+  params against the real contract (each must be accepted by
+  `queryFromValues`), so the table can never drift from the API; (b) the JS
+  parser is table-tested against the same file via an optional `node --test`
+  target — NOT part of `make test`, so `make build`/`make test`/CI stay
+  Go-only — plus exercised end-to-end in the visual checks. (A Go test cannot
+  execute an ES module; this split keeps the Node-free constraint honest.)
 - **Smoke:** `make smoke` grows a curl check that `/ui/` returns HTML
   alongside the existing `/v1/search` checks.
 - **Visual:** screenshot passes with browser tooling during development;
