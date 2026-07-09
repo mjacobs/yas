@@ -103,7 +103,11 @@ function renderRecord(rec) {
   }
   if (rec.session) {
     const link = el('a', 'session', rec.session.slice(0, 8));
-    link.href = '?session=' + encodeURIComponent(rec.session);
+    // Preserve the rest of the view state (q etc.) so the banner's
+    // "back to search" can restore it by removing only `session`.
+    const url = new URL(location);
+    url.searchParams.set('session', rec.session);
+    link.href = url.search;
     link.title = 'session ' + rec.session;
     meta.append(link);
   }
