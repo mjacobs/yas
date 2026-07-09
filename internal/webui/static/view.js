@@ -19,3 +19,20 @@ export function collapseRuns(records, keep = 'first') {
   }
   return groups;
 }
+
+// applyDefaultFilters merges the persisted default view filters (executor,
+// host) into the parsed search params. Explicit search-box tokens always win;
+// empty-string prefs mean "no default". Returns a new object.
+export function applyDefaultFilters(params, prefs) {
+  const merged = { ...params };
+  for (const key of ['executor', 'host']) {
+    if (prefs[key] && !(key in merged)) merged[key] = prefs[key];
+  }
+  return merged;
+}
+
+// dropFailures removes records that finished with a non-zero exit code.
+// Successes (0) and still-running records (no exit_code yet) stay.
+export function dropFailures(records) {
+  return records.filter((r) => r.exit_code == null || r.exit_code === 0);
+}

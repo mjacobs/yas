@@ -4,7 +4,7 @@
 // so the repo stays Node-free for build/CI.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collapseRuns } from './static/view.js';
+import { collapseRuns, applyDefaultFilters, dropFailures } from './static/view.js';
 
 const rec = (command, extra = {}) => ({ command, ...extra });
 
@@ -51,5 +51,50 @@ test('collapseRuns: keep last selects the final record of a run', () => {
   assert.deepEqual(collapseRuns(records, 'last'), [
     { record: records[1], count: 2 },
     { record: records[2], count: 1 },
+  ]);
+});
+
+// --- default filters ---------------------------------------------------------
+
+test('applyDefaultFilters: empty prefs leave params untouched', () => {
+  assert.deepEqual(applyDefaultFilters({ q: 'git' }, {}), { q: 'git' });
+});
+
+test('applyDefaultFilters: executor and host defaults fill absent params', () => {
+  assert.deepEqual(
+    applyDefaultFilters({ q: 'git' }, { executor: '$all-human', host: 'pine' }),
+    { q: 'git', executor: '$all-human', host: 'pine' },
+  );
+});
+
+test('applyDefaultFilters: explicit search tokens beat defaults', () => {
+  assert.deepEqual(
+    applyDefaultFilters({ executor: 'claude', host: 'baox' }, { executor: '$all-human', host: 'pine' }),
+    { executor: 'claude', host: 'baox' },
+  );
+});
+
+test('applyDefaultFilters: empty-string prefs are not defaults', () => {
+  assert.deepEqual(applyDefaultFilters({}, { executor: '', host: '' }), {});
+});
+
+test('applyDefaultFilters: does not mutate its input', () => {
+  const params = {};
+  applyDefaultFilters(params, { host: 'pine' });
+  assert.deepEqual(params, {});
+});
+
+test('dropFailures: removes non-zero exits, keeps successes and running', () => {
+  const records = [
+    { command: 'ok', exit_code: 0 },
+    { command: 'boom', exit_code: 1 },
+    { command: 'running' },
+    { command: 'null-exit', exit_code: null },
+    { command: 'sigint', exit_code: 130 },
+  ];
+  assert.deepEqual(dropFailures(records).map((r) => r.command), [
+    'ok',
+    'running',
+    'null-exit',
   ]);
 });
