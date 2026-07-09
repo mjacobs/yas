@@ -86,6 +86,19 @@ function el(tag, className, text) {
   return node;
 }
 
+// shortenHome collapses the record's home directory to "~" for display.
+// The client has no $HOME, so it infers the conventional home from the
+// record's username (Linux /home/<u>, macOS /Users/<u>). Display-only —
+// the record JSON and the detail view keep the full path.
+function shortenHome(path, username) {
+  if (!username) return path;
+  for (const home of ['/home/' + username, '/Users/' + username]) {
+    if (path === home) return '~';
+    if (path.startsWith(home + '/')) return '~' + path.slice(home.length);
+  }
+  return path;
+}
+
 function renderRecord(rec) {
   const li = el('li', 'record');
   const cmd = el('code', 'command', rec.command);
@@ -99,7 +112,17 @@ function renderRecord(rec) {
   // Every meta cell is always rendered (empty when absent) so the shared
   // grid columns line up across rows.
   meta.append(el('span', 'host', rec.hostname || ''));
-  meta.append(el('span', 'cwd', rec.cwd || ''));
+  // cwd is display-shortened (~ for the user's home, tail-visible ellipsis
+  // via CSS) — the full path lives in the tooltip and the record detail.
+  const cwd = el('span', 'cwd');
+  if (rec.cwd) {
+    // <bdi> isolates the LTR path text from the cell's RTL direction (which
+    // exists only to put the ellipsis on the LEFT so the leaf dirs stay
+    // visible) — without it punctuation reshuffles.
+    cwd.append(el('bdi', null, shortenHome(rec.cwd, rec.username)));
+    cwd.title = rec.cwd;
+  }
+  meta.append(cwd);
   const dur =
     rec.duration_ms === undefined || rec.duration_ms === null
       ? ''
@@ -131,6 +154,7 @@ function renderRecord(rec) {
 const DETAIL_FIELDS = [
   ['id', (r) => r.id],
   ['session', (r) => r.session],
+  ['cwd', (r) => r.cwd],
   ['executor', (r) => r.executor || 'human'],
   ['corr_id', (r) => r.corr_id],
   ['shell', (r) => r.shell],

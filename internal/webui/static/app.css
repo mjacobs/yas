@@ -99,11 +99,17 @@ body {
   font-size: 0.78rem;
   color: var(--subtext);
 }
+/* Tail-visible truncation: the RTL direction moves the ellipsis to the LEFT
+   edge so the leaf directories — the informative part — stay visible. The
+   inner <bdi> keeps the path text itself LTR. Full path is in the title
+   tooltip and the record detail. */
 .cwd {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
 }
 /* Narrow screens: fall back to the wrapping inline layout. */
 @media (max-width: 40rem) {
