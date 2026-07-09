@@ -58,34 +58,60 @@ body {
 #search-box:focus { border-color: var(--accent); }
 #search-box::placeholder { color: var(--subtext); opacity: 0.7; }
 
+/* Timeline rows share column tracks: the ol owns the grid, each record
+   subgrids onto it, so the meta columns (exit | host | cwd | duration |
+   session | when) align vertically across all rows. The directory is the
+   flexible column and takes the leftover width. */
 #timeline {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns:
+    max-content        /* exit badge */
+    max-content        /* host */
+    minmax(0, 1fr)     /* cwd — flexible, ellipsized */
+    max-content        /* duration */
+    max-content        /* session */
+    max-content;       /* relative time */
+  column-gap: 1rem;
 }
 .record {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  row-gap: 0.35rem;
   padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--surface);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 1rem;
 }
 .record:hover { background: var(--surface); border-radius: 6px; }
 .command {
+  grid-column: 1 / -1;
   font-family: var(--font-mono);
   font-size: 0.9rem;
-  flex: 1 1 100%;
   white-space: pre-wrap;
   word-break: break-all;
 }
+/* The meta wrapper dissolves so its spans become cells of the shared grid. */
 .meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 1rem;
+  display: contents;
   font-size: 0.78rem;
   color: var(--subtext);
+}
+.cwd {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Narrow screens: fall back to the wrapping inline layout. */
+@media (max-width: 40rem) {
+  #timeline { display: block; }
+  .record { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+  .command { flex: 1 1 100%; }
+  .meta { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+  .cwd { white-space: normal; overflow: visible; }
 }
 .badge {
   font-family: var(--font-mono);
@@ -111,7 +137,8 @@ body {
 .session-banner a { color: var(--accent); }
 .command { cursor: pointer; }
 .detail {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  flex: 1 1 100%; /* narrow-screen flex fallback */
   margin: 0.4rem 0 0;
   padding: 0.5rem 0.75rem;
   background: var(--surface);

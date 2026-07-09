@@ -96,11 +96,15 @@ function renderRecord(rec) {
   } else {
     meta.append(el('span', 'badge running', '…'));
   }
-  if (rec.hostname) meta.append(el('span', 'host', rec.hostname));
-  if (rec.cwd) meta.append(el('span', 'cwd', rec.cwd));
-  if (rec.duration_ms !== undefined && rec.duration_ms !== null) {
-    meta.append(el('span', 'duration', humanDuration(rec.duration_ms)));
-  }
+  // Every meta cell is always rendered (empty when absent) so the shared
+  // grid columns line up across rows.
+  meta.append(el('span', 'host', rec.hostname || ''));
+  meta.append(el('span', 'cwd', rec.cwd || ''));
+  const dur =
+    rec.duration_ms === undefined || rec.duration_ms === null
+      ? ''
+      : humanDuration(rec.duration_ms);
+  meta.append(el('span', 'duration', dur));
   if (rec.session) {
     const link = el('a', 'session', rec.session.slice(0, 8));
     // Preserve the rest of the view state (q etc.) so the banner's
@@ -110,6 +114,8 @@ function renderRecord(rec) {
     link.href = url.search;
     link.title = 'session ' + rec.session;
     meta.append(link);
+  } else {
+    meta.append(el('span', 'session', ''));
   }
   const when = el('time', 'when', relativeTime(rec.start_time));
   when.dateTime = rec.start_time;
