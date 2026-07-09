@@ -74,3 +74,44 @@ func TestHandlerServesJS(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want it to contain javascript", ct)
 	}
 }
+
+// The digest dashboard is a second embedded page: /ui/digest.html plus its
+// module /ui/digest.js, a client of GET /v1/digest only.
+func TestHandlerServesDigestPage(t *testing.T) {
+	h := Handler()
+	res := get(t, h, "/ui/digest.html")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ui/digest.html = %d, want 200", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html", ct)
+	}
+	body, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(body), "digest") {
+		t.Fatalf("GET /ui/digest.html body missing digest marker:\n%s", body)
+	}
+
+	res = get(t, h, "/ui/digest.js")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ui/digest.js = %d, want 200", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("Content-Type = %q, want it to contain javascript", ct)
+	}
+}
+
+// The search page links to the digest dashboard and vice versa, so both views
+// are reachable without knowing the URLs.
+func TestPagesCrossLink(t *testing.T) {
+	h := Handler()
+	for path, want := range map[string]string{
+		"/ui/":            `href="digest.html"`,
+		"/ui/digest.html": `href="./"`,
+	} {
+		res := get(t, h, path)
+		body, _ := io.ReadAll(res.Body)
+		if !strings.Contains(string(body), want) {
+			t.Errorf("GET %s body missing %s", path, want)
+		}
+	}
+}

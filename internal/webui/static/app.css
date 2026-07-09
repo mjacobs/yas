@@ -158,6 +158,44 @@ body {
 .detail dt { color: var(--subtext); }
 .detail dd { margin: 0; word-break: break-all; }
 
+/* Digest dashboard (digest.html): one section per host, one card per
+   project/directory group. Reuses the shared tokens (badges, .host, .cwd,
+   .command) so both pages read as one UI. */
+.nav-link { color: var(--accent); }
+.digest-window {
+  margin: 1.5rem 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--subtext);
+}
+.digest-host { margin: 0 0 1.5rem; }
+.digest-host h2 {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.digest-group {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--surface);
+}
+.digest-group:hover { background: var(--surface); border-radius: 6px; }
+.digest-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+.digest-group-head .cwd { min-width: 0; flex: 0 1 auto; }
+.digest-count { color: var(--subtext); white-space: nowrap; }
+.digest-group-head .badge.fail { white-space: nowrap; }
+.digest-failures {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+.digest-failures li { padding: 0.1rem 0; }
+.digest-failures .command { cursor: default; }
+
 .status {
   margin-top: 1rem;
   color: var(--subtext);
