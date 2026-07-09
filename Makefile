@@ -33,9 +33,10 @@ test:
 
 # Optional (needs Node >= 22 — relies on unflagged ESM syntax detection for the
 # extensionless-manifest static/tokens.js; NOT part of `test`, build/CI stay
-# Go-only): table-test the web UI's JS token parser against the shared vectors.
+# Go-only): table-test the web UI's pure JS modules — the token parser against
+# the shared vectors, and the view-option helpers (dup-collapsing, filters).
 test-js:
-	node --test internal/webui/tokens_test.mjs
+	node --test internal/webui/tokens_test.mjs internal/webui/view_test.mjs
 
 vet:
 	$(GO) vet ./...
