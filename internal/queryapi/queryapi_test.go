@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mjacobs/yas/internal/digest"
 	"github.com/mjacobs/yas/internal/queryapi"
 	"github.com/mjacobs/yas/internal/record"
 	"github.com/mjacobs/yas/internal/store"
@@ -322,5 +323,131 @@ func TestUIMountedAndRootRedirects(t *testing.T) {
 		if loc := res.Header.Get("Location"); loc != "/ui/" {
 			t.Fatalf("GET %s Location = %q, want /ui/", path, loc)
 		}
+	}
+}
+
+// GET /v1/digest returns the same JSON contract as `yas digest --json`
+// (internal/digest.Envelope): the [since, until) window plus per-(host,
+// location) groups with counts, failure counts, and sampled failing commands.
+func TestDigest_ReturnsGroupedEnvelope(t *testing.T) {
+	srv := newTestServer(t,
+		record.Record{ID: "d1", Command: "go build", Hostname: "h", CWD: "/proj", ExitCode: ptr(0), StartTime: base, CreatedAt: base},
+		record.Record{ID: "d2", Command: "go test ./...", Hostname: "h", CWD: "/proj", ExitCode: ptr(1), StartTime: base.Add(time.Minute), CreatedAt: base},
+		record.Record{ID: "d3", Command: "ls", Hostname: "h", CWD: "/other", ExitCode: ptr(0), StartTime: base.Add(2 * time.Minute), CreatedAt: base},
+	)
+
+	since := base.UTC().Format(time.RFC3339)
+	until := base.Add(time.Hour).UTC().Format(time.RFC3339)
+	resp, err := http.Get(srv.URL + "/v1/digest?since=" + since + "&until=" + until)
+	if err != nil {
+		t.Fatalf("GET digest: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: got %d want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("content-type: got %q want application/json", ct)
+	}
+	var env digest.Envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Since != since || env.Until != until {
+		t.Errorf("window: got %q..%q want %q..%q", env.Since, env.Until, since, until)
+	}
+	if len(env.Groups) != 2 {
+		t.Fatalf("want 2 groups, got %d: %+v", len(env.Groups), env.Groups)
+	}
+	// cwd asc: /other before /proj.
+	if g := env.Groups[0]; g.Host != "h" || g.CWD != "/other" || g.Count != 1 || g.Failures != 0 || len(g.FailedCommands) != 0 {
+		t.Errorf("group 0 unexpected: %+v", g)
+	}
+	if g := env.Groups[1]; g.CWD != "/proj" || g.Count != 2 || g.Failures != 1 ||
+		len(g.FailedCommands) != 1 || g.FailedCommands[0] != "go test ./..." {
+		t.Errorf("group 1 unexpected: %+v", g)
+	}
+}
+
+// An empty window must serialize groups as [] (never null), and a group's
+// failed_commands likewise — the empty-list-as-[] contract invariant.
+func TestDigest_EmptyGroupsIsJSONArray(t *testing.T) {
+	srv := newTestServer(t) // no records
+	resp, err := http.Get(srv.URL + "/v1/digest?since=2023-11-14T00:00:00Z&until=2023-11-15T00:00:00Z")
+	if err != nil {
+		t.Fatalf("GET digest: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	body := strings.TrimSpace(string(raw))
+	if !strings.Contains(body, `"groups":[]`) || strings.Contains(body, "null") {
+		t.Fatalf("empty digest must serialize groups as [] with no nulls, got: %s", body)
+	}
+}
+
+// Without since/until the window defaults to "today": local midnight through
+// now — the same default as the `yas digest` CLI.
+func TestDigest_DefaultWindowIsToday(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/v1/digest")
+	if err != nil {
+		t.Fatalf("GET digest: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: got %d want 200", resp.StatusCode)
+	}
+	var env digest.Envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	since, err := time.Parse(time.RFC3339, env.Since)
+	if err != nil {
+		t.Fatalf("since not RFC3339: %q", env.Since)
+	}
+	until, err := time.Parse(time.RFC3339, env.Until)
+	if err != nil {
+		t.Fatalf("until not RFC3339: %q", env.Until)
+	}
+	now := time.Now()
+	wantSince := digest.StartOfDay(now)
+	if !since.Equal(wantSince) {
+		t.Errorf("default since: want local midnight %v, got %v", wantSince, since)
+	}
+	if until.Before(since) || until.After(now.Add(time.Minute)) {
+		t.Errorf("default until should be ~now: got %v", until)
+	}
+	if env.Groups == nil {
+		t.Error("groups must be non-nil")
+	}
+}
+
+func TestDigest_BadParamsAre400(t *testing.T) {
+	srv := newTestServer(t)
+	for _, q := range []string{
+		"since=notatime",
+		"until=nope",
+		"since=2023-11-15T00:00:00Z&until=2023-11-14T00:00:00Z", // inverted window
+	} {
+		resp, err := http.Get(srv.URL + "/v1/digest?" + q)
+		if err != nil {
+			t.Fatalf("GET digest?%s: %v", q, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("?%s: status %d want 400", q, resp.StatusCode)
+		}
+	}
+}
+
+func TestDigest_RejectsNonGET(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Post(srv.URL+"/v1/digest", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("status: got %d want 405", resp.StatusCode)
 	}
 }

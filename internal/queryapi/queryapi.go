@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mjacobs/yas/internal/digest"
 	"github.com/mjacobs/yas/internal/record"
 	"github.com/mjacobs/yas/internal/store"
 	"github.com/mjacobs/yas/internal/webui"
@@ -43,6 +44,7 @@ type SearchResponse struct {
 func NewHandler(s Searcher) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/search", searchHandler(s))
+	mux.HandleFunc("GET /v1/digest", digestHandler(s))
 	mux.HandleFunc("GET /v1/version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, versionResponse{Version: ContractVersion, RecordFields: record.ContractFields()})
 	})
@@ -76,6 +78,49 @@ func searchHandler(s Searcher) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, SearchResponse{Records: recs})
 	}
+}
+
+// digestHandler serves GET /v1/digest: the same JSON contract as
+// `yas digest --json` (internal/digest.Envelope). ?since/?until (RFC3339)
+// bound the [since, until) window; the default is "today" — local midnight
+// through now — matching the CLI. The scan is bounded by digest.ScanCap so a
+// huge window can't pull an unbounded result set into memory.
+func digestHandler(s Searcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		since, until, err := digestWindowFromValues(r.URL.Query(), time.Now())
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		recs, err := s.Search(r.Context(), store.Query{Since: since, Until: until, Limit: digest.ScanCap})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, digest.ToEnvelope(digest.Build(recs, since, until)))
+	}
+}
+
+// digestWindowFromValues resolves the digest window against now: ?since/?until
+// (RFC3339) with the CLI's "today" defaults (local midnight of now -> now).
+// An inverted window is an error (-> HTTP 400).
+func digestWindowFromValues(v url.Values, now time.Time) (since, until time.Time, err error) {
+	since = digest.StartOfDay(now)
+	if s := v.Get("since"); s != "" {
+		if since, err = time.Parse(time.RFC3339, s); err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid since %q: must be RFC3339 (e.g. 2006-01-02T15:04:05Z)", s)
+		}
+	}
+	until = now
+	if s := v.Get("until"); s != "" {
+		if until, err = time.Parse(time.RFC3339, s); err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid until %q: must be RFC3339 (e.g. 2006-01-02T15:04:05Z)", s)
+		}
+	}
+	if until.Before(since) {
+		return time.Time{}, time.Time{}, fmt.Errorf("until %s is before since %s", until.Format(time.RFC3339), since.Format(time.RFC3339))
+	}
+	return since, until, nil
 }
 
 // errorResponse is the JSON body for non-2xx responses.
