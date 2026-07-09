@@ -1,7 +1,8 @@
 // yas web UI — search + timeline page. A client of the /v1 JSON contract
 // only: the sole data path is same-origin fetch('/v1/search?...'). All view
-// state lives in the URL query string (?q=<raw search input>), so every
-// search is a shareable link.
+// state lives in the URL query string (?q=<raw search input>, plus
+// ?session=<id> for the session-detail view), so every view is a shareable
+// link.
 import { parseTokens } from './tokens.js';
 
 const PAGE_SIZE = 50;
@@ -19,8 +20,18 @@ let offset = 0;
 let exhausted = false;
 let loading = false;
 
+// Session-detail view (/ui/?session=<id>): the same timeline filtered to one
+// session, oldest-first. Ordering comes from the API (reverse=true), never
+// from client-side reshuffling — infinite-scroll pagination depends on it.
+let sessionView = '';
+
 function queryFromBox() {
-  return new URLSearchParams(parseTokens(box.value));
+  const params = new URLSearchParams(parseTokens(box.value));
+  if (sessionView) {
+    params.set('session', sessionView);
+    params.set('reverse', 'true');
+  }
+  return params;
 }
 
 async function loadPage() {
@@ -90,12 +101,51 @@ function renderRecord(rec) {
   if (rec.duration_ms !== undefined && rec.duration_ms !== null) {
     meta.append(el('span', 'duration', humanDuration(rec.duration_ms)));
   }
+  if (rec.session) {
+    const link = el('a', 'session', rec.session.slice(0, 8));
+    link.href = '?session=' + encodeURIComponent(rec.session);
+    link.title = 'session ' + rec.session;
+    meta.append(link);
+  }
   const when = el('time', 'when', relativeTime(rec.start_time));
   when.dateTime = rec.start_time;
   when.title = rec.start_time;
   meta.append(when);
   li.append(cmd, meta);
+  // Record detail: clicking the command expands the full record inline.
+  // Expanded state is not URL-persisted in v1.
+  cmd.addEventListener('click', () => toggleDetail(li, rec));
   return li;
+}
+
+const DETAIL_FIELDS = [
+  ['id', (r) => r.id],
+  ['session', (r) => r.session],
+  ['executor', (r) => r.executor || 'human'],
+  ['corr_id', (r) => r.corr_id],
+  ['shell', (r) => r.shell],
+  ['username', (r) => r.username],
+  ['exit_code', (r) => (r.exit_code === undefined || r.exit_code === null ? '(running)' : String(r.exit_code))],
+  ['duration', (r) => (r.duration_ms === undefined || r.duration_ms === null ? '' : `${humanDuration(r.duration_ms)} (${r.duration_ms}ms)`)],
+  ['start_time', (r) => r.start_time],
+  ['created_at', (r) => r.created_at],
+  ['repo_root', (r) => r.repo_root],
+  ['branch', (r) => r.branch],
+];
+
+function toggleDetail(li, rec) {
+  const existing = li.querySelector('.detail');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const dl = el('dl', 'detail');
+  for (const [label, value] of DETAIL_FIELDS) {
+    const v = value(rec);
+    if (!v) continue;
+    dl.append(el('dt', null, label), el('dd', null, v));
+  }
+  li.append(dl);
 }
 
 export function humanDuration(ms) {
@@ -138,7 +188,22 @@ function syncURL(replace) {
 }
 
 function readURL() {
-  box.value = new URLSearchParams(location.search).get('q') || '';
+  const params = new URLSearchParams(location.search);
+  box.value = params.get('q') || '';
+  sessionView = params.get('session') || '';
+  renderSessionBanner();
+}
+
+function renderSessionBanner() {
+  const banner = document.getElementById('session-banner');
+  banner.replaceChildren();
+  if (!sessionView) return;
+  banner.append('session ', el('code', null, sessionView), ' — oldest first · ');
+  const clear = el('a', null, 'back to search');
+  const url = new URL(location);
+  url.searchParams.delete('session');
+  clear.href = url.search || './';
+  banner.append(clear);
 }
 
 let debounce;

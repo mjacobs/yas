@@ -99,6 +99,32 @@ body {
 .host { color: var(--accent); }
 .cwd, .duration, .when { font-family: var(--font-mono); }
 
+.session { color: var(--accent); text-decoration: none; font-family: var(--font-mono); }
+.session:hover { text-decoration: underline; }
+.session-banner {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  color: var(--subtext);
+}
+.session-banner:empty { display: none; }
+.session-banner a { color: var(--accent); }
+.command { cursor: pointer; }
+.detail {
+  flex: 1 1 100%;
+  margin: 0.4rem 0 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.detail dt { color: var(--subtext); }
+.detail dd { margin: 0; word-break: break-all; }
+
 .status {
   margin-top: 1rem;
   color: var(--subtext);
