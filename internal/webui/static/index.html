@@ -18,6 +18,21 @@
              placeholder="free text · host:pine · cwd:/dev · exit:127 · failed · executor:claude · after:2026-06-01"
              aria-label="search history">
     </form>
+    <details id="view-options" class="view-options">
+      <summary>view options</summary>
+      <div class="view-options-body">
+        <label><input type="checkbox" id="opt-collapse"> collapse duplicate runs</label>
+        <label><input type="checkbox" id="opt-hide-failures"> hide failures</label>
+        <label>executor
+          <select id="opt-executor">
+            <option value="">all</option>
+            <option value="$all-human">human</option>
+            <option value="$all-agent">agent</option>
+          </select>
+        </label>
+        <label>host <input type="text" id="opt-host" size="10" autocomplete="off" spellcheck="false"></label>
+      </div>
+    </details>
     <p id="session-banner" class="session-banner"></p>
     <ol id="timeline"></ol>
     <p id="status" class="status" aria-live="polite"></p>

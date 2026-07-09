@@ -58,6 +58,38 @@ body {
 #search-box:focus { border-color: var(--accent); }
 #search-box::placeholder { color: var(--subtext); opacity: 0.7; }
 
+/* View-options panel: collapsed <details> line under the search box. */
+.view-options {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--subtext);
+}
+.view-options summary { cursor: pointer; }
+.view-options summary:hover { color: var(--text); }
+.view-options-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  padding: 0.5rem 0 0 1rem;
+  align-items: center;
+}
+.view-options label { display: flex; align-items: center; gap: 0.4rem; }
+.view-options input[type="checkbox"] { accent-color: var(--accent); }
+.view-options select,
+.view-options input[type="text"] {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--overlay);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  outline: none;
+}
+.view-options select:focus,
+.view-options input[type="text"]:focus { border-color: var(--accent); }
+
 /* Timeline rows share column tracks: the ol owns the grid, each record
    subgrids onto it, so the meta columns (exit | host | cwd | duration |
    session | when) align vertically across all rows. The directory is the
@@ -142,6 +174,12 @@ body {
 .session-banner:empty { display: none; }
 .session-banner a { color: var(--accent); }
 .command { cursor: pointer; }
+/* ×N badge on a collapsed duplicate run. */
+.dupcount {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .detail {
   grid-column: 1 / -1;
   flex: 1 1 100%; /* narrow-screen flex fallback */

@@ -3,9 +3,36 @@
 // state lives in the URL query string (?q=<raw search input>, plus
 // ?session=<id> for the session-detail view), so every view is a shareable
 // link.
+// The exception is the view-options panel (duplicate-collapsing + default
+// filters): those are per-browser preferences, persisted in localStorage,
+// not part of the shareable view.
 import { parseTokens } from './tokens.js';
+import { collapseRuns, applyDefaultFilters, dropFailures } from './view.js';
 
 const PAGE_SIZE = 50;
+
+// --- view options (persisted per browser) ------------------------------------
+
+const PREFS_KEY = 'yas.view';
+const DEFAULT_PREFS = { collapse: false, hideFailures: false, executor: '', host: '' };
+
+function loadPrefs() {
+  try {
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage unavailable (private mode etc.) — options still apply this page
+  }
+}
+
+const prefs = loadPrefs();
 
 const box = document.getElementById('search-box');
 const form = document.getElementById('search-form');
@@ -26,7 +53,7 @@ let loading = false;
 let sessionView = '';
 
 function queryFromBox() {
-  const params = new URLSearchParams(parseTokens(box.value));
+  const params = new URLSearchParams(applyDefaultFilters(parseTokens(box.value), prefs));
   if (sessionView) {
     params.set('session', sessionView);
     params.set('reverse', 'true');
@@ -53,7 +80,7 @@ async function loadPage() {
     }
     const { records } = await resp.json();
     if (gen !== generation) return;
-    for (const rec of records) timeline.append(renderRecord(rec));
+    const rendered = appendRecords(records);
     offset += records.length;
     if (records.length < PAGE_SIZE) exhausted = true;
     status.textContent = '';
@@ -63,11 +90,66 @@ async function loadPage() {
     } else {
       status.classList.remove('empty-state');
     }
+    // A page can render nothing (all rows hidden or merged into the previous
+    // page's tail); the sentinel is already intersecting so the observer
+    // won't re-fire — keep paging until something lands or the API is done.
+    if (rendered === 0 && !exhausted) {
+      loading = false;
+      loadPage();
+      return;
+    }
   } catch (err) {
     if (gen === generation) status.textContent = `error: ${err.message}`;
   } finally {
     if (gen === generation) loading = false;
   }
+}
+
+// appendRecords applies the view options (hide-failures filter, duplicate-run
+// collapsing) and appends the result to the timeline. Collapsing must survive
+// page seams: if a page starts with the same command the previous page ended
+// with, the counts merge into the existing row instead of adding a new one.
+// Returns how many rows it touched (appended or merged into).
+function appendRecords(records) {
+  let visible = prefs.hideFailures ? dropFailures(records) : records;
+  if (!prefs.collapse) {
+    for (const rec of visible) timeline.append(renderRecord(rec));
+    return visible.length;
+  }
+  // Session view is oldest-first, so the run's most recent occurrence is its
+  // last record; the default timeline is newest-first, so it's the first.
+  const groups = collapseRuns(visible, sessionView ? 'last' : 'first');
+  let touched = 0;
+  const tail = timeline.lastElementChild;
+  if (groups.length && tail && tail.dataset.command === groups[0].record.command) {
+    setRunCount(tail, Number(tail.dataset.count) + groups[0].count);
+    groups.shift();
+    touched++;
+  }
+  for (const { record, count } of groups) {
+    const li = renderRecord(record);
+    setRunCount(li, count);
+    timeline.append(li);
+    touched++;
+  }
+  return touched;
+}
+
+// setRunCount stamps a collapsed-run row with its occurrence count and shows
+// the ×N badge (only when the run really has more than one occurrence).
+function setRunCount(li, count) {
+  li.dataset.count = String(count);
+  let badge = li.querySelector('.dupcount');
+  if (count < 2) {
+    if (badge) badge.remove();
+    return;
+  }
+  if (!badge) {
+    badge = el('span', 'dupcount');
+    badge.title = 'consecutive identical runs (most recent shown)';
+    li.querySelector('.command').append(badge);
+  }
+  badge.textContent = ` ×${count}`;
 }
 
 function newSearch() {
@@ -101,6 +183,7 @@ function shortenHome(path, username) {
 
 function renderRecord(rec) {
   const li = el('li', 'record');
+  li.dataset.command = rec.command; // page-seam merge key for dup-collapsing
   const cmd = el('code', 'command', rec.command);
   const meta = el('span', 'meta');
   const exit = rec.exit_code;
@@ -258,6 +341,26 @@ window.addEventListener('popstate', () => {
   readURL();
   newSearch();
 });
+
+// --- view-options panel -------------------------------------------------------
+
+// Controls reflect the persisted prefs on load; any change saves and re-runs
+// the search so the new view applies immediately.
+const optControls = [
+  ['opt-collapse', 'collapse', 'checked'],
+  ['opt-hide-failures', 'hideFailures', 'checked'],
+  ['opt-executor', 'executor', 'value'],
+  ['opt-host', 'host', 'value'],
+];
+for (const [id, key, prop] of optControls) {
+  const control = document.getElementById(id);
+  control[prop] = prefs[key];
+  control.addEventListener('change', () => {
+    prefs[key] = prop === 'value' ? control[prop].trim() : control[prop];
+    savePrefs();
+    newSearch();
+  });
+}
 
 new IntersectionObserver((entries) => {
   if (entries.some((e) => e.isIntersecting)) loadPage();

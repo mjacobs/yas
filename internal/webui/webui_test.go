@@ -33,6 +33,19 @@ func TestHandlerServesIndex(t *testing.T) {
 	}
 }
 
+// The view-options panel (duplicate-collapsing toggle + default filters) is
+// part of the page contract: pin its controls so a markup refactor can't
+// silently drop them.
+func TestIndexHasViewOptions(t *testing.T) {
+	res := get(t, Handler(), "/ui/")
+	body, _ := io.ReadAll(res.Body)
+	for _, id := range []string{"view-options", "opt-collapse", "opt-hide-failures", "opt-executor", "opt-host"} {
+		if !strings.Contains(string(body), `id="`+id+`"`) {
+			t.Errorf("index.html missing control %q", id)
+		}
+	}
+}
+
 func TestHandlerServesCSS(t *testing.T) {
 	res := get(t, Handler(), "/ui/app.css")
 	if res.StatusCode != http.StatusOK {
