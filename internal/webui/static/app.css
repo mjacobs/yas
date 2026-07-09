@@ -4,6 +4,7 @@
 :root {
   --bg: #1e1e2e;        /* mocha base */
   --surface: #313244;   /* mocha surface0 */
+  --overlay: #45475a;   /* mocha surface1 */
   --text: #cdd6f4;      /* mocha text */
   --subtext: #a6adc8;   /* mocha subtext0 */
   --accent: #89b4fa;    /* mocha blue */
@@ -16,6 +17,7 @@
   :root {
     --bg: #eff1f5;      /* latte base */
     --surface: #ccd0da; /* latte surface0 */
+    --overlay: #bcc0cc; /* latte surface1 */
     --text: #4c4f69;    /* latte text */
     --subtext: #6c6f85; /* latte subtext0 */
     --accent: #1e66f5;  /* latte blue */
@@ -37,11 +39,70 @@ body {
   font-size: 1.5rem;
   margin: 0;
 }
+.wordmark a { color: inherit; text-decoration: none; }
 .wordmark .cat { color: var(--accent); font-size: 1rem; }
 .tagline { color: var(--subtext); margin: 0.25rem 0 0; }
-.empty-state {
-  margin-top: 3rem;
+
+#search-form { margin: 1.5rem 0 1rem; }
+#search-box {
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--overlay);
+  border-radius: 6px;
+  outline: none;
+}
+#search-box:focus { border-color: var(--accent); }
+#search-box::placeholder { color: var(--subtext); opacity: 0.7; }
+
+#timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.record {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--surface);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+}
+.record:hover { background: var(--surface); border-radius: 6px; }
+.command {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  flex: 1 1 100%;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 1rem;
+  font-size: 0.78rem;
+  color: var(--subtext);
+}
+.badge {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+}
+.badge.ok { color: var(--ok); }
+.badge.fail { color: var(--fail); }
+.badge.running { color: var(--subtext); }
+.host { color: var(--accent); }
+.cwd, .duration, .when { font-family: var(--font-mono); }
+
+.status {
+  margin-top: 1rem;
   color: var(--subtext);
   font-family: var(--font-mono);
   text-align: center;
 }
+.empty-state { margin-top: 3rem; }

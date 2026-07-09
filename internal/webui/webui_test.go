@@ -43,6 +43,20 @@ func TestHandlerServesCSS(t *testing.T) {
 	}
 }
 
+// Embedded files have a zero ModTime, so http.FileServer emits no
+// Last-Modified/ETag; without an explicit Cache-Control browsers would
+// heuristically cache assets across binary upgrades. no-cache forces
+// revalidation (a cheap localhost round-trip) so a new binary's UI wins.
+func TestHandlerSetsCacheControl(t *testing.T) {
+	h := Handler()
+	for _, path := range []string{"/ui/", "/ui/app.css", "/ui/app.js"} {
+		res := get(t, h, path)
+		if cc := res.Header.Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("GET %s Cache-Control = %q, want no-cache", path, cc)
+		}
+	}
+}
+
 func TestHandlerUnknownPathIs404(t *testing.T) {
 	if res := get(t, Handler(), "/ui/nope.js"); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET /ui/nope.js = %d, want 404", res.StatusCode)

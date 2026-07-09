@@ -19,7 +19,10 @@ var staticFS embed.FS
 //
 // Serving is delegated to http.FileServer, which gives us the MIME type
 // table (correct Content-Type for any future asset extension, not just
-// .html/.css), Range requests, and conditional-GET for free. The one wrinkle:
+// .html/.css) and Range requests for free. Embedded files carry a zero
+// ModTime, so FileServer emits no Last-Modified/ETag (no conditional-GET);
+// Cache-Control: no-cache below makes browsers revalidate instead of
+// heuristically caching assets across binary upgrades. The one wrinkle:
 // http.FileServer 301-redirects any request whose path ends in "/index.html"
 // to its directory form ("./"), which would break direct requests for
 // /ui/index.html. The shim below rewrites the path to its directory form
@@ -41,6 +44,7 @@ func Handler() http.Handler {
 			path = strings.TrimSuffix(path, "index.html")
 		}
 		r.URL.Path = path
+		w.Header().Set("Cache-Control", "no-cache")
 		fileServer.ServeHTTP(w, r)
 	}))
 }

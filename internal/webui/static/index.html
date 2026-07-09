@@ -9,11 +9,19 @@
 </head>
 <body>
   <header>
-    <h1 class="wordmark">yas <span class="cat" aria-hidden="true">=^..^=</span></h1>
+    <h1 class="wordmark"><a href="./">yas</a> <span class="cat" aria-hidden="true">=^..^=</span></h1>
     <p class="tagline">a queryable record of everything you run</p>
   </header>
   <main>
-    <p class="empty-state">=^..^= &nbsp;search is on its way — the skeleton is live.</p>
+    <form id="search-form" role="search">
+      <input id="search-box" type="search" autofocus autocomplete="off" spellcheck="false"
+             placeholder="free text · host:pine · cwd:/dev · exit:127 · failed · executor:claude · after:2026-06-01"
+             aria-label="search history">
+    </form>
+    <ol id="timeline"></ol>
+    <p id="status" class="status" aria-live="polite"></p>
+    <div id="sentinel" aria-hidden="true"></div>
   </main>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
