@@ -37,7 +37,9 @@ them. `seq` is sync-transport metadata and **never** appears in record JSON.
 
 - `GET /v1/search` — newest-first matching records. Params: `q` (FTS), `host`,
   `cwd`, `session`, `exit`, `executor` (a name, or `$all-agent` / `$all-human`; `human` is treated the same as `$all-human`, i.e. includes untagged rows),
-  `since`, `until` (RFC3339), `limit`, `offset`, `reverse`. Response:
+  `since`, `until` (RFC3339), `limit`, `offset`, `reverse`, `failed` (boolean;
+  `true` keeps only finished commands with a non-zero exit code, absent/`false`
+  is no filter; ANDs with `exit`). Response:
   `{"records":[...]}`. Empty result → `{"records":[]}` (never `null`).
 - `GET /v1/version` — `{"version":"v1","record_fields":[...]}`.
 - `GET /v1/healthz` — `{"status":"ok"}`.

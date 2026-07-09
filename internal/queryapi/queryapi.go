@@ -124,6 +124,13 @@ func queryFromValues(v url.Values) (store.Query, error) {
 			*p.dst = n
 		}
 	}
+	if s := v.Get("failed"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return store.Query{}, fmt.Errorf("invalid failed %q: must be a boolean", s)
+		}
+		q.FailedOnly = b
+	}
 	if s := v.Get("reverse"); s != "" {
 		b, err := strconv.ParseBool(s)
 		if err != nil {

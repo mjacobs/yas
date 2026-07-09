@@ -171,6 +171,37 @@ func TestSearch_QueryParams_OrderAndPaging(t *testing.T) {
 	}
 }
 
+func TestSearch_FailedParam(t *testing.T) {
+	// r5 is unfinished (nil exit): failed=true must exclude it.
+	recs := append(corpus(), record.Record{ID: "r5", Command: "sleep 999", Hostname: "hostA", Session: "s1", StartTime: base.Add(4 * time.Minute), CreatedAt: base})
+	srv := newTestServer(t, recs...)
+
+	cases := []struct {
+		query string
+		want  []string
+	}{
+		{"failed=true", []string{"r2"}},
+		{"failed=false", []string{"r1", "r2", "r3", "r4", "r5"}}, // explicit false = no filter
+		{"failed=true&exit=1", []string{"r2"}},                   // ANDs with exit=
+		{"failed=true&exit=0", []string{}},
+	}
+	for _, c := range cases {
+		resp, body := getJSON(t, srv.URL+"/v1/search?"+c.query)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("?%s: status %d want 200", c.query, resp.StatusCode)
+			continue
+		}
+		if got := idsOf(body.Records); !sameSet(got, c.want) {
+			t.Errorf("?%s: got %v want %v", c.query, got, c.want)
+		}
+	}
+
+	resp, _ := getJSON(t, srv.URL+"/v1/search?failed=notabool")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("failed=notabool: status %d want 400", resp.StatusCode)
+	}
+}
+
 func TestSearch_RejectsNonGET(t *testing.T) {
 	srv := newTestServer(t)
 	resp, err := http.Post(srv.URL+"/v1/search", "application/json", nil)
