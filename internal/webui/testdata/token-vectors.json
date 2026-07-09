@@ -1,0 +1,23 @@
+[
+  {"name": "empty input", "input": "", "params": {}},
+  {"name": "free text", "input": "git status", "params": {"q": "git status"}},
+  {"name": "host token", "input": "host:pine", "params": {"host": "pine"}},
+  {"name": "cwd token", "input": "cwd:/home/mj/dev", "params": {"cwd": "/home/mj/dev"}},
+  {"name": "exit token", "input": "exit:127", "params": {"exit": "127"}},
+  {"name": "bare failed", "input": "failed", "params": {"failed": "true"}},
+  {"name": "executor named", "input": "executor:claude", "params": {"executor": "claude"}},
+  {"name": "executor all-human", "input": "executor:$all-human", "params": {"executor": "$all-human"}},
+  {"name": "executor all-agent", "input": "executor:$all-agent", "params": {"executor": "$all-agent"}},
+  {"name": "session token", "input": "session:0197a2b4-0000-7000-8000-000000000000", "params": {"session": "0197a2b4-0000-7000-8000-000000000000"}},
+  {"name": "after date-only normalizes to UTC day start", "input": "after:2026-06-01", "params": {"since": "2026-06-01T00:00:00Z"}},
+  {"name": "before date-only normalizes to UTC day start", "input": "before:2026-07-01", "params": {"until": "2026-07-01T00:00:00Z"}},
+  {"name": "after full RFC3339 passes through", "input": "after:2026-06-01T12:30:00Z", "params": {"since": "2026-06-01T12:30:00Z"}},
+  {"name": "before full RFC3339 with offset passes through", "input": "before:2026-07-01T09:00:00+02:00", "params": {"until": "2026-07-01T09:00:00+02:00"}},
+  {"name": "free text mixed with tokens", "input": "git push host:pine failed", "params": {"q": "git push", "host": "pine", "failed": "true"}},
+  {"name": "tokens interleaved with text keep text order", "input": "host:pine docker exit:1 compose", "params": {"q": "docker compose", "host": "pine", "exit": "1"}},
+  {"name": "failed as substring of text stays text", "input": "grep failed-jobs", "params": {"q": "grep failed-jobs"}},
+  {"name": "unknown prefix stays free text", "input": "note:this is text", "params": {"q": "note:this is text"}},
+  {"name": "later duplicate token wins", "input": "host:pine host:baox", "params": {"host": "baox"}},
+  {"name": "whitespace collapsed", "input": "  git   status  ", "params": {"q": "git status"}},
+  {"name": "everything at once", "input": "make host:baox cwd:/home/mj/dev/projects exit:2 executor:$all-human after:2026-06-01 before:2026-07-01", "params": {"q": "make", "host": "baox", "cwd": "/home/mj/dev/projects", "exit": "2", "executor": "$all-human", "since": "2026-06-01T00:00:00Z", "until": "2026-07-01T00:00:00Z"}}
+]

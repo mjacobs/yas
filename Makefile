@@ -21,7 +21,7 @@ GO_BUILD_FLAGS := -trimpath -ldflags '$(GO_LDFLAGS)'
 # modernc.org/sqlite. `make cross` fails loudly if anything pulls in cgo.
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: all build test vet lint cross smoke screenshots install uninstall release clean
+.PHONY: all build test test-js vet lint cross smoke screenshots install uninstall release clean
 
 all: build test
 
@@ -30,6 +30,11 @@ build:
 
 test:
 	$(GO) test ./...
+
+# Optional (needs Node; NOT part of `test` — build/CI stay Go-only): table-test
+# the web UI's JS token parser against the shared grammar vectors.
+test-js:
+	node --test internal/webui/tokens_test.mjs
 
 vet:
 	$(GO) vet ./...
