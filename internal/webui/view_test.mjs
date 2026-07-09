@@ -62,15 +62,15 @@ test('applyDefaultFilters: empty prefs leave params untouched', () => {
 
 test('applyDefaultFilters: executor and host defaults fill absent params', () => {
   assert.deepEqual(
-    applyDefaultFilters({ q: 'git' }, { executor: '$all-human', host: 'pine' }),
-    { q: 'git', executor: '$all-human', host: 'pine' },
+    applyDefaultFilters({ q: 'git' }, { executor: '$all-human', host: 'alpha' }),
+    { q: 'git', executor: '$all-human', host: 'alpha' },
   );
 });
 
 test('applyDefaultFilters: explicit search tokens beat defaults', () => {
   assert.deepEqual(
-    applyDefaultFilters({ executor: 'claude', host: 'baox' }, { executor: '$all-human', host: 'pine' }),
-    { executor: 'claude', host: 'baox' },
+    applyDefaultFilters({ executor: 'claude', host: 'bravo' }, { executor: '$all-human', host: 'alpha' }),
+    { executor: 'claude', host: 'bravo' },
   );
 });
 
@@ -80,7 +80,7 @@ test('applyDefaultFilters: empty-string prefs are not defaults', () => {
 
 test('applyDefaultFilters: does not mutate its input', () => {
   const params = {};
-  applyDefaultFilters(params, { host: 'pine' });
+  applyDefaultFilters(params, { host: 'alpha' });
   assert.deepEqual(params, {});
 });
 

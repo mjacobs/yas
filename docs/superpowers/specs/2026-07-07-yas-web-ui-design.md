@@ -83,8 +83,8 @@ tokens parsed client-side into `/v1/search` params:
 | Token | Maps to |
 | --- | --- |
 | free text | `q` (FTS) |
-| `host:pine` | `host=pine` |
-| `cwd:/home/mj/dev` | `cwd=...` |
+| `host:alpha` | `host=alpha` |
+| `cwd:/home/user/dev` | `cwd=...` |
 | `exit:127` | `exit=127` |
 | `failed` | `failed=true` (new additive param, see above) |
 | `executor:$all-human` / `executor:claude` | `executor=...` |
