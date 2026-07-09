@@ -31,8 +31,9 @@ build:
 test:
 	$(GO) test ./...
 
-# Optional (needs Node; NOT part of `test` — build/CI stay Go-only): table-test
-# the web UI's JS token parser against the shared grammar vectors.
+# Optional (needs Node >= 22 — relies on unflagged ESM syntax detection for the
+# extensionless-manifest static/tokens.js; NOT part of `test`, build/CI stay
+# Go-only): table-test the web UI's JS token parser against the shared vectors.
 test-js:
 	node --test internal/webui/tokens_test.mjs
 
